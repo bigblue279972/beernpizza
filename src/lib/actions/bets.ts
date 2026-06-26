@@ -23,6 +23,7 @@ export interface CreateBetInput {
   myProbability: number;
   marginBuffer: number;
   availablePrice: number;
+  noVigProb?: number;
   kellyDivisor: number;
   capPct: number;
   checklistPriceMet: boolean;
@@ -32,6 +33,27 @@ export interface CreateBetInput {
   placedIntent: boolean;
   stakeOverride?: number;
   notes?: string;
+}
+
+export interface UpdateBetInput {
+  eventDate?: string;
+  event?: string;
+  market?: string;
+  myProbability?: number;
+  marginBuffer?: number;
+  availablePrice?: number;
+  noVigProb?: number | null;
+  kellyDivisor?: number;
+  capPct?: number;
+  stakeOverride?: number;
+  checklistPriceMet?: boolean;
+  checklistLiquidMarket?: boolean;
+  checklistNotChasing?: boolean;
+  divergenceJustification?: string | null;
+  placed?: boolean;
+  closingPrice?: number | null;
+  result?: BetResult;
+  notes?: string | null;
 }
 
 export async function listBetsForSport(sportId: string) {
@@ -101,6 +123,10 @@ export async function createBet(input: CreateBetInput) {
 
   const stake = placed ? input.stakeOverride ?? stakeResult.suggestedStake : 0;
 
+  const impliedProbTaken = 100 / input.availablePrice;
+  const edgePercent =
+    input.noVigProb !== undefined ? input.noVigProb - impliedProbTaken : null;
+
   const bet = await prisma.bet.create({
     data: {
       sportId: input.sportId,
@@ -110,6 +136,9 @@ export async function createBet(input: CreateBetInput) {
       myProbability: input.myProbability,
       marginBuffer: input.marginBuffer,
       availablePrice: input.availablePrice,
+      noVigProb: input.noVigProb ?? null,
+      impliedProbTaken,
+      edgePercent,
       bankrollAtEntry: bankroll.currentBalance,
       kellyDivisor: input.kellyDivisor,
       capPct: input.capPct,
@@ -185,6 +214,125 @@ export async function deleteBet(id: string) {
   await prisma.$transaction(operations);
 
   revalidatePath(`/sports/${bet.sport.slug}`);
+  revalidatePath("/bankroll");
+  revalidatePath("/");
+}
+
+export async function updateBet(id: string, input: UpdateBetInput) {
+  const existing = await prisma.bet.findUniqueOrThrow({ where: { id }, include: { sport: true } });
+  const sport = existing.sport;
+
+  const myProbability = input.myProbability ?? existing.myProbability;
+  const marginBuffer = input.marginBuffer ?? existing.marginBuffer;
+  const availablePrice = input.availablePrice ?? existing.availablePrice;
+  const kellyDivisor = input.kellyDivisor ?? existing.kellyDivisor;
+  const capPct = input.capPct ?? existing.capPct;
+  const placed = input.placed !== undefined ? input.placed : existing.placed;
+  const checklistPriceMet =
+    input.checklistPriceMet !== undefined ? input.checklistPriceMet : existing.checklistPriceMet;
+  const checklistLiquidMarket =
+    input.checklistLiquidMarket !== undefined
+      ? input.checklistLiquidMarket
+      : existing.checklistLiquidMarket;
+  const checklistNotChasing =
+    input.checklistNotChasing !== undefined
+      ? input.checklistNotChasing
+      : existing.checklistNotChasing;
+
+  const fair = fairPrice(myProbability);
+  const required = requiredPrice(fair, marginBuffer);
+  const priceQualifies = qualifies(availablePrice, required);
+  const divergence = divergencePoints(myProbability, availablePrice);
+  const flagged = Math.abs(divergence) > sport.divergenceThreshold;
+
+  if (placed) {
+    if (!priceQualifies) {
+      throw new Error("Cannot mark as placed: available price does not meet required +EV price.");
+    }
+    if (!checklistPriceMet || !checklistLiquidMarket || !checklistNotChasing) {
+      throw new Error("Cannot mark as placed until the pre-bet checklist is complete.");
+    }
+  }
+
+  const bankroll = await getBankrollSettings();
+  const stakeResult = quarterKellyStake(
+    bankroll.currentBalance,
+    myProbability,
+    availablePrice,
+    kellyDivisor,
+    capPct,
+  );
+
+  const stake = placed
+    ? input.stakeOverride !== undefined
+      ? input.stakeOverride
+      : existing.stake
+    : 0;
+
+  const noVigProb = "noVigProb" in input ? input.noVigProb : (existing.noVigProb ?? null);
+  const impliedProbTaken = 100 / availablePrice;
+  const edgePercent = noVigProb !== null && noVigProb !== undefined
+    ? noVigProb - impliedProbTaken
+    : null;
+
+  const result = (input.result ?? existing.result) as BetResult;
+  const closingPrice =
+    "closingPrice" in input ? input.closingPrice ?? null : existing.closingPrice;
+
+  const newPnl =
+    result !== "PENDING" && closingPrice !== null && placed
+      ? settlePnl(stake, availablePrice, result)
+      : null;
+
+  const oldPnl = existing.result !== "PENDING" && existing.pnl != null ? existing.pnl : 0;
+  const delta = (newPnl ?? 0) - oldPnl;
+
+  const betUpdate = prisma.bet.update({
+    where: { id },
+    data: {
+      eventDate: input.eventDate ? new Date(input.eventDate) : existing.eventDate,
+      event: input.event ?? existing.event,
+      market: input.market ?? existing.market,
+      myProbability,
+      marginBuffer,
+      availablePrice,
+      noVigProb: noVigProb ?? null,
+      impliedProbTaken,
+      edgePercent,
+      kellyDivisor,
+      capPct,
+      suggestedStake: stakeResult.suggestedStake,
+      stake,
+      checklistPriceMet,
+      checklistLiquidMarket,
+      checklistNotChasing,
+      divergenceJustification:
+        flagged
+          ? (input.divergenceJustification !== undefined
+              ? input.divergenceJustification
+              : existing.divergenceJustification)
+          : null,
+      placed,
+      closingPrice,
+      result,
+      pnl: newPnl,
+      notes: "notes" in input ? input.notes ?? null : existing.notes,
+    },
+  });
+
+  if (delta !== 0) {
+    await prisma.$transaction([
+      betUpdate,
+      prisma.bankrollSettings.update({
+        where: { id: bankroll.id },
+        data: { currentBalance: bankroll.currentBalance + delta },
+      }),
+    ]);
+  } else {
+    await betUpdate;
+  }
+
+  revalidatePath(`/sports/${sport.slug}`);
   revalidatePath("/bankroll");
   revalidatePath("/");
 }

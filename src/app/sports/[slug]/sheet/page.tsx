@@ -1,5 +1,6 @@
 import { getSportBySlug } from "@/lib/actions/sports";
 import { listBetsForSport } from "@/lib/actions/bets";
+import { getBankrollSettings } from "@/lib/actions/bankroll";
 import { notFound } from "next/navigation";
 import { BetTable } from "@/components/BetTable";
 
@@ -23,7 +24,10 @@ export default async function SheetPage({
   const sport = await getSportBySlug(slug);
   if (!sport) notFound();
 
-  const bets = await listBetsForSport(sport.id);
+  const [bets, bankroll] = await Promise.all([
+    listBetsForSport(sport.id),
+    getBankrollSettings(),
+  ]);
 
   const settledBets = bets.filter((b) => b.placed && b.closingPrice !== null && b.clvPercent !== null);
   const avgClv =
@@ -97,7 +101,12 @@ export default async function SheetPage({
         </a>
       </div>
 
-      <BetTable bets={bets} sportSlug={slug} />
+      <BetTable
+        bets={bets}
+        sportSlug={slug}
+        divergenceThreshold={sport.divergenceThreshold}
+        bankrollBalance={bankroll.currentBalance}
+      />
     </div>
   );
 }

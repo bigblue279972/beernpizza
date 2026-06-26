@@ -95,6 +95,14 @@ export async function getClvDashboard() {
   const wins = settledBets.filter((b) => b.result === "WIN").length;
   const totalPnl = settledBets.reduce((a, b) => a + (b.pnl ?? 0), 0);
 
+  // Edge estimate: avg edgePercent across placed bets that had noVigProb set
+  const allPlacedBets = await prisma.bet.findMany({
+    where: { placed: true, edgePercent: { not: null } },
+    select: { edgePercent: true },
+  });
+  const edgeValues = allPlacedBets.map((b) => b.edgePercent!);
+  const avgEdgePct = mean(edgeValues);
+
   const { settings, currentDrawdownPct, stopLossTriggered } = await getBankrollSeries();
 
   return {
@@ -107,6 +115,7 @@ export async function getClvDashboard() {
       winRate: settledBets.length > 0 ? (wins / settledBets.length) * 100 : null,
       totalPnl,
       avgClvPct: avgClv,
+      avgEdgePct,
     },
     bankroll: {
       currentBalance: settings.currentBalance,

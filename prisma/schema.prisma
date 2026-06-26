@@ -69,6 +69,11 @@ model Bet {
 
   placed Boolean @default(false) // only allowed true if availablePrice >= requiredPrice AND checklist complete
 
+  // De-vigged probability + edge estimate at time of bet (never overwritten)
+  noVigProb        Float? // user's framework de-vigged true probability (%)
+  impliedProbTaken Float? // 100 / availablePrice, auto-calculated on creation
+  edgePercent      Float? // noVigProb - impliedProbTaken, auto-calculated on creation
+
   // Settled after the close / result is known
   closingPrice Float?
   result       BetResult @default(PENDING)

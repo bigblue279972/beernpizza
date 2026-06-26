@@ -78,9 +78,16 @@ export default async function HomePage() {
           sub={`${overall.settledCount} bets with closing prices`}
         />
         <StatCard
-          label="Sample Size"
-          value={String(verdict.sampleSize)}
-          sub="settled bets w/ close"
+          label="Avg Edge % (entry)"
+          value={overall.avgEdgePct !== null ? `${fmt(overall.avgEdgePct)}%` : "—"}
+          valueClass={
+            overall.avgEdgePct === null
+              ? "text-[var(--text-muted)]"
+              : overall.avgEdgePct > 0
+                ? "text-[var(--green)]"
+                : "text-[var(--red)]"
+          }
+          sub="estimated edge at bet time"
         />
         <StatCard
           label="Win Rate"

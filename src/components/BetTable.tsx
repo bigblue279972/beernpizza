@@ -4,10 +4,13 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { settleBet, deleteBet } from "@/lib/actions/bets";
 import type { BetComputed } from "@/lib/betView";
+import { BetEditModal } from "@/components/BetEditModal";
 
 interface Props {
   bets: BetComputed[];
   sportSlug: string;
+  divergenceThreshold: number;
+  bankrollBalance: number;
 }
 
 function fmt(n: number | null, decimals = 2): string {
@@ -96,7 +99,19 @@ function SettleForm({ betId, onDone }: { betId: string; onDone: () => void }) {
   );
 }
 
-function BetRow({ bet, sportSlug }: { bet: BetComputed; sportSlug: string }) {
+function BetRow({
+  bet,
+  sportSlug,
+  divergenceThreshold,
+  bankrollBalance,
+  onEdit,
+}: {
+  bet: BetComputed;
+  sportSlug: string;
+  divergenceThreshold: number;
+  bankrollBalance: number;
+  onEdit: (bet: BetComputed) => void;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [showSettle, setShowSettle] = useState(false);
@@ -209,6 +224,12 @@ function BetRow({ bet, sportSlug }: { bet: BetComputed; sportSlug: string }) {
         </td>
         <td className="px-3 py-2.5">
           <div className={`flex gap-1 transition-opacity ${showHover || showSettle ? "opacity-100" : "opacity-0"}`}>
+            <button
+              onClick={() => onEdit(bet)}
+              className="text-[10px] px-2 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors"
+            >
+              Edit
+            </button>
             {bet.result === "PENDING" && bet.placed && (
               <button
                 onClick={() => setShowSettle(true)}
@@ -238,7 +259,9 @@ function BetRow({ bet, sportSlug }: { bet: BetComputed; sportSlug: string }) {
   );
 }
 
-export function BetTable({ bets, sportSlug }: Props) {
+export function BetTable({ bets, sportSlug, divergenceThreshold, bankrollBalance }: Props) {
+  const [editingBet, setEditingBet] = useState<BetComputed | null>(null);
+
   if (bets.length === 0) {
     return (
       <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
@@ -251,38 +274,56 @@ export function BetTable({ bets, sportSlug }: Props) {
   }
 
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm whitespace-nowrap">
-          <thead>
-            <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
-              <Th>Date</Th>
-              <Th>Event</Th>
-              <Th>Market</Th>
-              <Th right>My Prob%</Th>
-              <Th right>Fair</Th>
-              <Th right>Required</Th>
-              <Th right>Available</Th>
-              <Th center>Qual.</Th>
-              <Th right>Sug. Stake</Th>
-              <Th right>Stake</Th>
-              <Th right>Close</Th>
-              <Th right>CLV%</Th>
-              <Th>Result</Th>
-              <Th right>P&amp;L</Th>
-              <Th>Tags</Th>
-              <Th center>Div.</Th>
-              <Th>Actions</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {bets.map((bet) => (
-              <BetRow key={bet.id} bet={bet} sportSlug={sportSlug} />
-            ))}
-          </tbody>
-        </table>
+    <>
+      {editingBet && (
+        <BetEditModal
+          bet={editingBet}
+          sportSlug={sportSlug}
+          divergenceThreshold={divergenceThreshold}
+          bankrollBalance={bankrollBalance}
+          onClose={() => setEditingBet(null)}
+        />
+      )}
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm whitespace-nowrap">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
+                <Th>Date</Th>
+                <Th>Event</Th>
+                <Th>Market</Th>
+                <Th right>My Prob%</Th>
+                <Th right>Fair</Th>
+                <Th right>Required</Th>
+                <Th right>Available</Th>
+                <Th center>Qual.</Th>
+                <Th right>Sug. Stake</Th>
+                <Th right>Stake</Th>
+                <Th right>Close</Th>
+                <Th right>CLV%</Th>
+                <Th>Result</Th>
+                <Th right>P&amp;L</Th>
+                <Th>Tags</Th>
+                <Th center>Div.</Th>
+                <Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {bets.map((bet) => (
+                <BetRow
+                  key={bet.id}
+                  bet={bet}
+                  sportSlug={sportSlug}
+                  divergenceThreshold={divergenceThreshold}
+                  bankrollBalance={bankrollBalance}
+                  onEdit={setEditingBet}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

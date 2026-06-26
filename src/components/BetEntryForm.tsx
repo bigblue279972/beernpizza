@@ -48,6 +48,7 @@ export function BetEntryForm({
 
   // Probability & pricing
   const [myProbability, setMyProbability] = useState("");
+  const [noVigProb, setNoVigProb] = useState("");
   const [marginBuffer, setMarginBuffer] = useState(String(defaultMarginBuffer));
   const [availablePrice, setAvailablePrice] = useState("");
 
@@ -129,6 +130,7 @@ export function BetEntryForm({
           event,
           market,
           myProbability: probNum,
+          noVigProb: noVigProb ? parseFloat(noVigProb) : undefined,
           marginBuffer: bufferNum,
           availablePrice: priceNum,
           kellyDivisor: kellyDivNum,
@@ -147,6 +149,7 @@ export function BetEntryForm({
         setMarket("");
         setEventDate("");
         setMyProbability("");
+        setNoVigProb("");
         setMarginBuffer(String(defaultMarginBuffer));
         setAvailablePrice("");
         setKellyDiv(String(kellyDivisor));
@@ -261,6 +264,24 @@ export function BetEntryForm({
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
+                No-Vig Probability (%) <span className="text-[var(--text-muted)] font-normal normal-case">optional</span>
+              </label>
+              <input
+                type="number"
+                value={noVigProb}
+                onChange={(e) => setNoVigProb(e.target.value)}
+                placeholder="de-vigged true prob"
+                min="0.01"
+                max="99.99"
+                step="0.01"
+                className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--blue)] focus:outline-none transition-colors font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">
                 Margin Buffer (decimal odds)
               </label>
               <input
@@ -274,6 +295,20 @@ export function BetEntryForm({
                 className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--blue)] focus:outline-none transition-colors font-mono"
               />
             </div>
+            {noVigProb && priceNum > 0 && (
+              <div className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 self-end mb-0.5">
+                <p className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] font-medium mb-0.5">
+                  Edge Estimate
+                </p>
+                <p className={`text-base font-mono font-bold ${
+                  parseFloat(noVigProb) - (100 / priceNum) > 0
+                    ? "text-[var(--green)]"
+                    : "text-[var(--red)]"
+                }`}>
+                  {((parseFloat(noVigProb) || 0) - 100 / priceNum).toFixed(2)}%
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Computed: Fair Price + Required Price */}
