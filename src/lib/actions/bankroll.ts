@@ -51,6 +51,23 @@ export interface BankrollPoint {
 // manual transaction, and every settled bet's P&L, in chronological order.
 // This is what drives the drawdown chart and the hard-stop check — it must
 // match prisma's currentBalance exactly or the stop-loss alert is lying.
+export async function listBankrollTransactions() {
+  return prisma.bankrollTransaction.findMany({ orderBy: { createdAt: "asc" } });
+}
+
+export async function deleteBankrollTransaction(id: string) {
+  const settings = await getBankrollSettings();
+  const txn = await prisma.bankrollTransaction.findUniqueOrThrow({ where: { id } });
+  await prisma.$transaction([
+    prisma.bankrollTransaction.delete({ where: { id } }),
+    prisma.bankrollSettings.update({
+      where: { id: settings.id },
+      data: { currentBalance: settings.currentBalance - txn.amount },
+    }),
+  ]);
+  revalidatePath("/bankroll");
+}
+
 export async function getBankrollSeries(): Promise<{
   settings: Awaited<ReturnType<typeof getBankrollSettings>>;
   series: BankrollPoint[];

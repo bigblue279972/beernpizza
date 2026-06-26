@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createResearchLink, deleteResearchLink } from "@/lib/actions/research";
+import { createResearchLink, deleteResearchLink, updateResearchLink } from "@/lib/actions/research";
 
 type ResearchLink = {
   id: string;
@@ -149,17 +149,42 @@ function AddLinkForm({ sports }: { sports: Sport[] }) {
   );
 }
 
-function DeleteButton({ id }: { id: string }) {
-  const [isPending, startTransition] = useTransition();
+function LinkCard({ link, sports }: { link: ResearchLink; sports: Sport[] }) {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(link.label);
+  const [url, setUrl] = useState(link.url);
+  const [category, setCategory] = useState(link.category);
+  const [sportId, setSportId] = useState(link.sportId ?? "");
   const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  function handleDelete() {
-    if (!window.confirm("Delete this link?")) return;
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!label.trim()) { setError("Label is required."); return; }
+    if (!url.trim()) { setError("URL is required."); return; }
     setError("");
     startTransition(async () => {
       try {
-        await deleteResearchLink(id);
+        await updateResearchLink(link.id, {
+          label: label.trim(),
+          url: url.trim(),
+          category,
+          sportId: sportId || null,
+        });
+        setEditing(false);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save.");
+      }
+    });
+  }
+
+  function handleDelete() {
+    if (!window.confirm("Delete this link?")) return;
+    startTransition(async () => {
+      try {
+        await deleteResearchLink(link.id);
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to delete.");
@@ -167,22 +192,81 @@ function DeleteButton({ id }: { id: string }) {
     });
   }
 
-  return (
-    <span className="inline-flex items-center gap-1">
-      <button
-        onClick={handleDelete}
-        disabled={isPending}
-        className="text-xs text-[var(--text-muted)] hover:text-[var(--red)] transition-colors disabled:opacity-50"
-        title="Delete link"
-      >
-        {isPending ? "Deleting…" : "Delete"}
-      </button>
-      {error && <span className="text-xs text-[var(--red)]">{error}</span>}
-    </span>
-  );
-}
+  if (editing) {
+    return (
+      <div className="rounded-lg border border-[var(--blue)]/40 bg-[var(--surface)] p-4 flex flex-col gap-3">
+        <form onSubmit={handleSave} className="flex flex-col gap-2">
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Label</label>
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className={inputClass}
+              disabled={isPending}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">URL</label>
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className={inputClass}
+              disabled={isPending}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-[var(--text-muted)] mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className={selectClass}
+                disabled={isPending}
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-[var(--text-muted)] mb-1">Sport</label>
+              <select
+                value={sportId}
+                onChange={(e) => setSportId(e.target.value)}
+                className={selectClass}
+                disabled={isPending}
+              >
+                <option value="">Global</option>
+                {sports.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {error && <p className="text-xs text-[var(--red)]">{error}</p>}
+          <div className="flex gap-2 mt-1">
+            <button
+              type="submit"
+              disabled={isPending}
+              className="px-3 py-1.5 rounded bg-[var(--blue)] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {isPending ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEditing(false); setLabel(link.label); setUrl(link.url); setCategory(link.category); setSportId(link.sportId ?? ""); setError(""); }}
+              className="px-3 py-1.5 rounded border border-[var(--border)] text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
-function LinkCard({ link }: { link: ResearchLink }) {
   const categoryColor = CATEGORY_COLORS[link.category] ?? CATEGORY_COLORS.OTHER;
   const sportLabel = link.sport ? link.sport.name : "Global";
   const isGlobal = !link.sportId;
@@ -218,13 +302,27 @@ function LinkCard({ link }: { link: ResearchLink }) {
             {sportLabel}
           </span>
         </div>
-        <DeleteButton id={link.id} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--blue)] transition-colors"
+          >
+            Edit
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={isPending}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--red)] transition-colors disabled:opacity-50"
+          >
+            {isPending ? "…" : "Delete"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function LinksGrid({ links }: { links: ResearchLink[] }) {
+function LinksGrid({ links, sports }: { links: ResearchLink[]; sports: Sport[] }) {
   if (links.length === 0) {
     return (
       <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-5 py-8 text-center">
@@ -265,8 +363,8 @@ function LinksGrid({ links }: { links: ResearchLink[] }) {
               <span className="ml-2 font-normal normal-case">({allLinks.length})</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {globalLinks.map((link) => <LinkCard key={link.id} link={link} />)}
-              {sportLinks.map((link) => <LinkCard key={link.id} link={link} />)}
+              {globalLinks.map((link) => <LinkCard key={link.id} link={link} sports={sports} />)}
+              {sportLinks.map((link) => <LinkCard key={link.id} link={link} sports={sports} />)}
             </div>
           </div>
         );
@@ -304,7 +402,7 @@ export function ResearchPageClient({
         </p>
       </div>
 
-      <LinksGrid links={links} />
+      <LinksGrid links={links} sports={sports} />
     </div>
   );
 }

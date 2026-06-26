@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { createLesson, deleteLesson } from "@/lib/actions/lessons";
+import { createLesson, deleteLesson, updateLesson } from "@/lib/actions/lessons";
 import type { Lesson } from "@/generated/prisma";
 
 interface LessonWithRelations extends Lesson {
@@ -61,6 +61,12 @@ export function LessonsPanel({ sportId, initialLessons, allTags }: Props) {
   const [formTags, setFormTags] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+
   const filtered = useMemo(() => {
     return initialLessons.filter((lesson) => {
       const matchesQuery =
@@ -101,6 +107,34 @@ export function LessonsPanel({ sportId, initialLessons, allTags }: Props) {
     startTransition(async () => {
       await deleteLesson(id);
       router.refresh();
+    });
+  }
+
+  function startEdit(lesson: LessonWithRelations) {
+    setEditingId(lesson.id);
+    setEditText(lesson.text);
+    setEditTags(lesson.tags);
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditText("");
+    setEditTags("");
+    setEditError(null);
+  }
+
+  async function handleSaveEdit(id: string) {
+    if (!editText.trim()) { setEditError("Lesson text is required."); return; }
+    setEditError(null);
+    startTransition(async () => {
+      try {
+        await updateLesson(id, { text: editText, tags: editTags });
+        cancelEdit();
+        router.refresh();
+      } catch (err) {
+        setEditError(err instanceof Error ? err.message : "Failed to save.");
+      }
     });
   }
 
@@ -238,20 +272,68 @@ export function LessonsPanel({ sportId, initialLessons, allTags }: Props) {
               .map((t) => t.trim())
               .filter(Boolean);
 
+            if (editingId === lesson.id) {
+              return (
+                <div key={lesson.id} className="rounded-lg border border-[var(--blue)]/40 bg-[var(--surface)] px-5 py-4">
+                  <div className="space-y-2">
+                    <textarea
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:border-[var(--blue)] focus:outline-none resize-none"
+                    />
+                    <div>
+                      <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Tags (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={editTags}
+                        onChange={(e) => setEditTags(e.target.value)}
+                        className="w-full rounded-md border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text)] focus:border-[var(--blue)] focus:outline-none"
+                      />
+                    </div>
+                    {editError && <p className="text-xs text-[var(--red)]">{editError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSaveEdit(lesson.id)}
+                        disabled={isPending}
+                        className="px-3 py-1.5 rounded bg-[var(--blue)] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                      >
+                        {isPending ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="px-3 py-1.5 rounded border border-[var(--border)] text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={lesson.id}
-                className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-5 py-4 group"
+                className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-5 py-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm text-[var(--text)] leading-relaxed flex-1">{lesson.text}</p>
-                  <button
-                    onClick={() => handleDelete(lesson.id)}
-                    disabled={isPending}
-                    className="text-[10px] text-[var(--text-muted)] hover:text-[var(--red)] transition-colors opacity-0 group-hover:opacity-100 shrink-0 mt-0.5"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0 mt-0.5">
+                    <button
+                      onClick={() => startEdit(lesson)}
+                      className="text-[10px] text-[var(--text-muted)] hover:text-[var(--blue)] transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(lesson.id)}
+                      disabled={isPending}
+                      className="text-[10px] text-[var(--text-muted)] hover:text-[var(--red)] transition-colors disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
 
                 {tags.length > 0 && (

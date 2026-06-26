@@ -44,6 +44,17 @@ export async function deleteLesson(id: string) {
   revalidatePath("/");
 }
 
+export async function updateLesson(id: string, data: { text?: string; tags?: string }) {
+  await prisma.lesson.update({
+    where: { id },
+    data: {
+      ...(data.text !== undefined ? { text: data.text.trim() } : {}),
+      ...(data.tags !== undefined ? { tags: data.tags.trim() } : {}),
+    },
+  });
+  revalidatePath("/");
+}
+
 export async function getAllTags(): Promise<string[]> {
   const lessons = await prisma.lesson.findMany({ select: { tags: true } });
   const tags = new Set<string>();

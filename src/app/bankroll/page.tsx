@@ -1,7 +1,8 @@
-import { getBankrollSeries } from "@/lib/actions/bankroll";
+import { getBankrollSeries, listBankrollTransactions } from "@/lib/actions/bankroll";
 import { BankrollChart } from "@/components/BankrollChart";
 import { BankrollSettingsForm } from "./BankrollSettingsForm";
 import { BankrollTransactionForm } from "./BankrollTransactionForm";
+import { BankrollTransactionList } from "./BankrollTransactionList";
 
 function StatCard({
   label,
@@ -28,8 +29,8 @@ function StatCard({
 }
 
 export default async function BankrollPage() {
-  const { settings, series, peak, currentDrawdownPct, stopLossTriggered } =
-    await getBankrollSeries();
+  const [{ settings, series, peak, currentDrawdownPct, stopLossTriggered }, transactions] =
+    await Promise.all([getBankrollSeries(), listBankrollTransactions()]);
 
   const currentBalance = settings.currentBalance;
   const startingBalance = settings.startingBalance;
@@ -45,18 +46,12 @@ export default async function BankrollPage() {
   const drawdownClass = currentDrawdownPct > 10 ? "text-[var(--red)]" : "text-[var(--text)]";
   const pnlClass = totalPnl >= 0 ? "text-[var(--green)]" : "text-[var(--red)]";
 
-  // Last 20 series entries for the timeline log, with deltas
+  // Last 20 series entries for bet settlements
   const recentEntries = series.slice(-20).map((pt, i, arr) => {
     const prev = i > 0 ? arr[i - 1].balance : pt.balance;
-    return {
-      ...pt,
-      delta: pt.balance - prev,
-    };
+    return { ...pt, delta: pt.balance - prev };
   });
-
-  // Separate manual transactions from bet settlements
   const manualLabels = new Set(["DEPOSIT", "WITHDRAWAL", "ADJUSTMENT", "Starting balance"]);
-  const manualEntries = recentEntries.filter((e) => manualLabels.has(e.label));
   const betEntries = recentEntries.filter((e) => !manualLabels.has(e.label));
 
   function formatDate(d: Date | string): string {
@@ -168,140 +163,58 @@ export default async function BankrollPage() {
         </div>
       </div>
 
-      {/* Transaction history / series log */}
+      {/* Manual transactions with delete */}
       <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden mb-6">
         <div className="px-5 py-3 border-b border-[var(--border)]">
-          <h2 className="text-sm font-semibold text-[var(--text)]">Recent Activity</h2>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">Last 20 events in chronological order.</p>
+          <h2 className="text-sm font-semibold text-[var(--text)]">Manual Transactions</h2>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">Deposits, withdrawals, and adjustments. Delete reverses the balance change.</p>
         </div>
+        <BankrollTransactionList transactions={transactions} />
+      </div>
 
-        {recentEntries.length <= 1 ? (
+      {/* Bet settlement history */}
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] overflow-hidden mb-6">
+        <div className="px-5 py-3 border-b border-[var(--border)]">
+          <h2 className="text-sm font-semibold text-[var(--text)]">Bet Settlements</h2>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">P&L from settled bets. To reverse, delete the bet from its sport sheet.</p>
+        </div>
+        {betEntries.length === 0 ? (
           <div className="px-5 py-8 text-center">
-            <p className="text-[var(--text-muted)] text-sm">No activity yet.</p>
-            <p className="text-[var(--text-muted)] text-xs mt-1">
-              Add a deposit or settle a bet to see history here.
-            </p>
+            <p className="text-[var(--text-muted)] text-sm">No settled bets yet.</p>
           </div>
         ) : (
-          <div>
-            {/* Manual transactions section */}
-            {manualEntries.length > 0 && (
-              <div>
-                <div className="px-5 py-2 bg-[var(--surface-2)] border-b border-[var(--border)]">
-                  <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                    Manual Transactions
-                  </span>
-                </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border)]">
-                      <th className="text-left px-5 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                        Date
-                      </th>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                        Type
-                      </th>
-                      <th className="text-right px-4 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                        Change
-                      </th>
-                      <th className="text-right px-5 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                        Balance
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {manualEntries.map((entry, i) => {
-                      const deltaClass =
-                        entry.delta > 0
-                          ? "text-[var(--green)]"
-                          : entry.delta < 0
-                            ? "text-[var(--red)]"
-                            : "text-[var(--text-muted)]";
-                      return (
-                        <tr
-                          key={i}
-                          className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-2)] transition-colors"
-                        >
-                          <td className="px-5 py-2.5 text-[var(--text-muted)] whitespace-nowrap">
-                            {formatDate(entry.date)}
-                          </td>
-                          <td className="px-4 py-2.5 text-[var(--text)]">{entry.label}</td>
-                          <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${deltaClass}`}>
-                            {entry.delta === 0
-                              ? "—"
-                              : `${entry.delta > 0 ? "+" : ""}£${Math.abs(entry.delta).toFixed(2)}`}
-                          </td>
-                          <td className="px-5 py-2.5 text-right tabular-nums text-[var(--text)]">
-                            £{entry.balance.toFixed(2)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Bet settlements section */}
-            {betEntries.length > 0 && (
-              <div>
-                <div className="px-5 py-2 bg-[var(--surface-2)] border-b border-[var(--border)]">
-                  <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                    Bet Settlements
-                  </span>
-                </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border)]">
-                      <th className="text-left px-5 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                        Date
-                      </th>
-                      <th className="text-left px-4 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                        Event
-                      </th>
-                      <th className="text-right px-4 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                        P&amp;L
-                      </th>
-                      <th className="text-right px-5 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                        Balance
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {betEntries.map((entry, i) => {
-                      const deltaClass =
-                        entry.delta > 0
-                          ? "text-[var(--green)]"
-                          : entry.delta < 0
-                            ? "text-[var(--red)]"
-                            : "text-[var(--text-muted)]";
-                      return (
-                        <tr
-                          key={i}
-                          className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-2)] transition-colors"
-                        >
-                          <td className="px-5 py-2.5 text-[var(--text-muted)] whitespace-nowrap">
-                            {formatDate(entry.date)}
-                          </td>
-                          <td className="px-4 py-2.5 text-[var(--text)] max-w-[220px] truncate">
-                            {entry.label}
-                          </td>
-                          <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${deltaClass}`}>
-                            {entry.delta === 0
-                              ? "—"
-                              : `${entry.delta > 0 ? "+" : ""}£${Math.abs(entry.delta).toFixed(2)}`}
-                          </td>
-                          <td className="px-5 py-2.5 text-right tabular-nums text-[var(--text)]">
-                            £{entry.balance.toFixed(2)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)]">
+                <th className="text-left px-5 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Date</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Event</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">P&amp;L</th>
+                <th className="text-right px-5 py-2 text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {betEntries.map((entry, i) => {
+                const deltaClass =
+                  entry.delta > 0
+                    ? "text-[var(--green)]"
+                    : entry.delta < 0
+                      ? "text-[var(--red)]"
+                      : "text-[var(--text-muted)]";
+                return (
+                  <tr key={i} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-2)] transition-colors">
+                    <td className="px-5 py-2.5 text-xs text-[var(--text-muted)] whitespace-nowrap">{formatDate(entry.date)}</td>
+                    <td className="px-4 py-2.5 text-xs text-[var(--text)] max-w-[220px] truncate">{entry.label}</td>
+                    <td className={`px-4 py-2.5 text-xs text-right tabular-nums font-medium font-mono ${deltaClass}`}>
+                      {entry.delta === 0 ? "—" : `${entry.delta > 0 ? "+" : ""}£${Math.abs(entry.delta).toFixed(2)}`}
+                    </td>
+                    <td className="px-5 py-2.5 text-xs text-right tabular-nums text-[var(--text)] font-mono">
+                      £{entry.balance.toFixed(2)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>

@@ -115,7 +115,6 @@ function BetRow({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [showSettle, setShowSettle] = useState(false);
-  const [showHover, setShowHover] = useState(false);
 
   const lessonTags =
     "lessonTags" in bet && Array.isArray((bet as BetComputed & { lessonTags: Array<{ tags: string }> }).lessonTags)
@@ -149,9 +148,7 @@ function BetRow({
   return (
     <>
       <tr
-        className="border-b border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors group"
-        onMouseEnter={() => setShowHover(true)}
-        onMouseLeave={() => setShowHover(false)}
+        className="border-b border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors"
       >
         <td className="px-3 py-2.5 text-xs text-[var(--text-muted)] whitespace-nowrap tabular-nums">
           {fmtDate(bet.eventDate)}
@@ -223,7 +220,7 @@ function BetRow({
           )}
         </td>
         <td className="px-3 py-2.5">
-          <div className={`flex gap-1 transition-opacity ${showHover || showSettle ? "opacity-100" : "opacity-0"}`}>
+          <div className="flex gap-1">
             <button
               onClick={() => onEdit(bet)}
               className="text-[10px] px-2 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors"

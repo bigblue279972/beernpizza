@@ -36,6 +36,23 @@ export async function deleteResearchLink(id: string) {
   revalidatePath("/research");
 }
 
+export async function updateResearchLink(
+  id: string,
+  data: { label?: string; url?: string; category?: string; sportId?: string | null },
+) {
+  const link = await prisma.researchLink.update({
+    where: { id },
+    data: {
+      ...(data.label !== undefined ? { label: data.label.trim() } : {}),
+      ...(data.url !== undefined ? { url: data.url.trim() } : {}),
+      ...(data.category !== undefined ? { category: data.category } : {}),
+      ...("sportId" in data ? { sportId: data.sportId ?? null } : {}),
+    },
+  });
+  revalidatePath("/research");
+  return link;
+}
+
 export async function updateResearchLinkOrder(ids: string[]) {
   await Promise.all(ids.map((id, i) => prisma.researchLink.update({ where: { id }, data: { order: i } })));
   revalidatePath("/research");
