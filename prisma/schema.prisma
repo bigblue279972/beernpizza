@@ -1,0 +1,126 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A sport module. Seeded with the 10 default sports but fully user-editable.
+model Sport {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  order     Int      @default(0)
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Default discipline settings for this sport. Bets can override per-bet.
+  defaultMarginBuffer    Float @default(0.05) // added to fair price, in decimal odds points
+  divergenceThreshold    Float @default(8) // percentage points before forced justification prompt
+  perBetCapPct           Float @default(2) // hard cap on stake as % of bankroll, regardless of Kelly output
+
+  bets        Bet[]
+  lessons     Lesson[]
+  researchLinks ResearchLink[]
+}
+
+enum BetResult {
+  PENDING
+  WIN
+  LOSS
+  VOID
+}
+
+model Bet {
+  id        String   @id @default(cuid())
+  sportId   String
+  sport     Sport    @relation(fields: [sportId], references: [id])
+  createdAt DateTime @default(now())
+
+  eventDate DateTime
+  event     String
+  market    String
+
+  // Inputs
+  myProbability      Float // percent, 0-100
+  marginBuffer        Float // decimal odds points added to fair price for this bet
+  availablePrice      Float // decimal odds offered on the exchange
+  bankrollAtEntry     Float // bankroll snapshot used for Kelly calc
+  kellyDivisor        Float @default(4) // 4 = quarter Kelly
+  capPct              Float // per-bet cap (% of bankroll) applied at entry time, copied from sport setting
+
+  // Outputs, persisted for an honest audit trail (bankroll/cap can change later)
+  suggestedStake Float // quarter-Kelly output, computed even when the bet wasn't placed
+  stake          Float @default(0) // units actually risked; 0 unless placed
+
+  // Pre-bet checklist confirmations (must all be true to mark placed)
+  checklistPriceMet     Boolean @default(false)
+  checklistLiquidMarket Boolean @default(false)
+  checklistNotChasing   Boolean @default(false)
+
+  // Divergence justification, required when |myProbability - marketImplied| exceeds threshold
+  divergenceJustification String?
+
+  placed Boolean @default(false) // only allowed true if availablePrice >= requiredPrice AND checklist complete
+
+  // De-vigged probability + edge estimate at time of bet (never overwritten)
+  noVigProb        Float? // user's framework de-vigged true probability (%)
+  impliedProbTaken Float? // 100 / availablePrice, auto-calculated on creation
+  edgePercent      Float? // noVigProb - impliedProbTaken, auto-calculated on creation
+
+  // Settled after the close / result is known
+  closingPrice Float?
+  result       BetResult @default(PENDING)
+  pnl          Float?
+
+  lessonTags Lesson[] @relation("BetLessons")
+
+  notes String?
+}
+
+model Lesson {
+  id        String   @id @default(cuid())
+  sportId   String?
+  sport     Sport?   @relation(fields: [sportId], references: [id])
+  createdAt DateTime @default(now())
+
+  text String
+  tags String // comma-separated tags, e.g. "overrated-favourite,narrative-bias"
+
+  bets Bet[] @relation("BetLessons")
+}
+
+model BankrollSettings {
+  id                  String   @id @default(cuid())
+  startingBalance      Float    @default(1000)
+  currentBalance       Float    @default(1000)
+  hardStopLossPct      Float    @default(20) // % drawdown from peak that triggers a hard stop
+  hardStopLossAmount   Float? // optional absolute floor, takes precedence if set
+  defaultKellyDivisor  Float    @default(4)
+  globalPerBetCapPct   Float    @default(2)
+  updatedAt            DateTime @updatedAt
+}
+
+model BankrollTransaction {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  type      String // DEPOSIT | WITHDRAWAL | ADJUSTMENT
+  amount    Float
+  note      String?
+}
+
+model ResearchLink {
+  id       String  @id @default(cuid())
+  sportId  String?
+  sport    Sport?  @relation(fields: [sportId], references: [id])
+  label    String
+  url      String
+  category String // EXCHANGE | STATS | NEWS | SPREADSHEET | OTHER
+  order    Int     @default(0)
+}
