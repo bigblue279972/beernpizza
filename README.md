@@ -11,7 +11,32 @@ and scoring them on Closing Line Value.
 pip install openpyxl
 python tools/build_betting_log.py "Betting Log.xlsx"            # blank template
 DEMO_N=45 python tools/build_betting_log.py "demo.xlsx" --demo   # filled sample
+LOG_ROWS=3001 python tools/build_betting_log.py "big.xlsx"      # more capacity
 ```
+
+The log holds 1500 bets by default (`LOG_ROWS`). Every running column -- bank
+before/after, expected bank, peak and drawdown -- is **incremental**, each row
+reading the row above it rather than re-summing the column from the top. The
+obvious `SUM($X$2:$Xr)` form is O(n^2) for the sheet as a whole and makes a
+few thousand rows sluggish on a laptop.
+
+## Analysing a Betfair export
+
+`tools/betfair_analyse.py` reads a Betfair *ExchangeBets Settled* CSV and reports
+turnover, commission-adjusted ROI, a significance test on the per-bet return,
+profit concentration, and breakdowns by market, odds band and month.
+
+```bash
+python tools/betfair_analyse.py ExchangeBets_Settled.csv
+```
+
+Two parsing traps it handles: the month is written `Sept`, not `Sep`, so
+`%b` will not parse it; and the description is `Event Selection-Market | Betfair
+Bet ID`, where the market is after the **last** hyphen -- splitting on the first
+one mangles every hyphenated club name (Zulte-Waregem, Red Bull Bragantino).
+
+Note that the exported `Profit/Loss` column is **gross**: Betfair charges
+commission separately on net market winnings, so it is not in that figure.
 
 Five tabs: **Bet Log** (the only tab with typing in it), **Dashboard**,
 **Whats Working**, **Settings**, **How To Use**.

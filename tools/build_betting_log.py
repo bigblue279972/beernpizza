@@ -34,7 +34,7 @@ from openpyxl.formatting.rule import FormulaRule, CellIsRule
 from openpyxl.chart import LineChart, BarChart, Reference
 from openpyxl.comments import Comment
 
-LAST = 501            # last bet row (500 bets)
+LAST = int(os.environ.get("LOG_ROWS", "1501"))   # last bet row (1500 bets)
 SEC_ROW = 11          # Settings: "dropdown lists" banner
 NOTE_ROW = 12
 LIST_HDR = 14         # Settings: list header row
@@ -142,6 +142,7 @@ COLUMNS = [
     ("pl_matched",  "P/L where a plan exists", 13, MONEY, "help"),
     ("clv_matched", "CLV $ where a plan exists", 13, MONEY, "help"),
     ("clv_plan",    "CLV $ at Plan Stake", 13, MONEY, "help"),
+    ("peak",        "Bank peak",       11, MONEY,  "help"),
     ("drawdown",    "Drawdown",        11, MONEY,  "help"),
     ("band",        "Odds Band",       12, None,   "help"),
     ("month",       "Month",           10, None,   "help"),
@@ -401,13 +402,10 @@ for r in range(2, LAST + 1):
     ws_log[f"{COL['units']}{r}"] = (
         f'=IF(OR({c("at_risk", r)}="",{S}$B$4=""),"",'
         f'IFERROR({c("at_risk", r)}/{S}$B$4,""))')
-    if r == 2:
-        ws_log[f"{COL['bank_open']}{r}"] = f'={S}$B$3'
-    else:
-        ws_log[f"{COL['bank_open']}{r}"] = (
-            f'={S}$B$3+SUM(${COL["pl"]}$2:${COL["pl"]}{p})')
+    ws_log[f"{COL['bank_open']}{r}"] = (
+        f'={S}$B$3' if r == 2 else f'={c("bank_close", p)}')
     ws_log[f"{COL['bank_close']}{r}"] = (
-        f'={S}$B$3+SUM(${COL["pl"]}$2:${COL["pl"]}{r})')
+        f'={c("bank_open", r)}+IF(ISNUMBER({c("pl", r)}),{c("pl", r)},0)')
     ws_log[f"{COL['status']}{r}"] = (
         f'=IF({c("date", r)}="","",IF({c("close", r)}="","AWAITING CLOSE",'
         f'IF({c("result", r)}="","AWAITING RESULT","SETTLED")))')
@@ -422,7 +420,8 @@ for r in range(2, LAST + 1):
             f'COUNT(${COL["clv_pct"]}{w0}:${COL["clv_pct"]}{r})=0),{c("roll_clv", p)},'
             f'AVERAGE(${COL["clv_pct"]}{w0}:${COL["clv_pct"]}{r}))')
     ws_log[f"{COL['exp_bank']}{r}"] = (
-        f'={S}$B$3+SUM(${COL["clv"]}$2:${COL["clv"]}{r})')
+        (f'={S}$B$3' if r == 2 else f'={c("exp_bank", p)}')
+        + f'+IF(ISNUMBER({c("clv", r)}),{c("clv", r)},0)')
     for dst, src in (("pl_plan", "pl"), ("clv_plan", "clv")):
         ws_log[f"{COL[dst]}{r}"] = (
             f'=IF(OR(NOT(ISNUMBER({c(src, r)})),NOT(ISNUMBER({c("plan_stake", r)})),'
@@ -432,8 +431,10 @@ for r in range(2, LAST + 1):
         f'=IF({c("pl_plan", r)}="","",{c("pl", r)})')
     ws_log[f"{COL['clv_matched']}{r}"] = (
         f'=IF({c("clv_plan", r)}="","",{c("clv", r)})')
-    ws_log[f"{COL['drawdown']}{r}"] = (
-        f'=MAX(${COL["bank_close"]}$2:${COL["bank_close"]}{r})-{c("bank_close", r)}')
+    ws_log[f"{COL['peak']}{r}"] = (
+        f'={c("bank_close", r)}' if r == 2
+        else f'=MAX({c("peak", p)},{c("bank_close", r)})')
+    ws_log[f"{COL['drawdown']}{r}"] = f'={c("peak", r)}-{c("bank_close", r)}'
     ws_log[f"{COL['band']}{r}"] = (
         f'=IF({c("odds", r)}="","",IF({c("odds", r)}<1.5,"1.01 - 1.49",'
         f'IF({c("odds", r)}<2,"1.50 - 1.99",IF({c("odds", r)}<3,"2.00 - 2.99",'
