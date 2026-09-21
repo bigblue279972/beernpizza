@@ -20,6 +20,34 @@ reading the row above it rather than re-summing the column from the top. The
 obvious `SUM($X$2:$Xr)` form is O(n^2) for the sheet as a whole and makes a
 few thousand rows sluggish on a laptop.
 
+## Getting Closing Line Value
+
+CLV needs one number per bet: the last traded price on that selection at the
+off. Getting there is three steps.
+
+**Step 1 - `tools/betfair_pull_bets.py`.** The website CSV export has no
+`marketId` or `selectionId`, only free text, so it cannot be joined to price
+data reliably. `listClearedOrders` returns both, plus `marketStartTime`. This is
+time-critical: **Betfair caps that history at 90 days** and it cannot be
+re-opened.
+
+```bash
+python tools/betfair_pull_bets.py          # writes betfair_bets_with_ids.csv
+```
+
+Standard library only. Credentials live in `betfair_config.txt` (gitignored) and
+the password is prompted per run, never written to disk. A free *Delayed* App Key
+is expected to be sufficient here, since cleared orders are account data rather
+than live market prices.
+
+**Step 2** - join those IDs to Betfair Historical Data BASIC, which is free and
+carries last-traded-price per minute back to April 2015. Per-minute granularity
+is all CLV needs; the paid ADVANCED/PRO tiers only add volume and the full
+ladder. Unlike the orders themselves, this price data has no 90-day limit.
+
+**Step 3** - capture the price at the off for new bets, so the log fills its own
+Closing Odds column.
+
 ## Analysing a Betfair export
 
 `tools/betfair_analyse.py` reads a Betfair *ExchangeBets Settled* CSV and reports
