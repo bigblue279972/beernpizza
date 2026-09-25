@@ -66,7 +66,32 @@ Four things it is careful about:
 - **Ambiguous matches are refused**, not guessed: the best fixture must also
   beat the runner-up by a margin.
 
-**Scope.** Club football in covered leagues only. It cannot reach international
+**Step 2b - `tools/clv_afl.py`.** The same job for AFL, from the free Australia
+Sports Betting workbook (`aussportsbetting.com/historical_data/afl.xlsx`, results
+plus bookmaker open/min/max/close). Covers head-to-head, line and total points —
+104 of the 111 AFL bets in the sample history.
+
+```bash
+python tools/clv_afl.py --inspect afl.xlsx      # show me the real columns first
+python tools/clv_afl.py ExchangeBets_Settled.csv
+```
+
+- **Columns are detected, not assumed.** The workbook's headers could not be
+  verified from this sandbox, so each field is found by pattern over the real
+  header row and the mapping is printed. Anything matching `open`, `min` or
+  `max` is barred from being an odds benchmark.
+- **Clubs resolve through a fixed 18-team alias map**, not fuzzy matching —
+  exact is both safer and easier for a closed league, and it copes with the
+  nickname Betfair sometimes prefixes (`SUNS Gold Coast`, `Cats Geelong`).
+  Longest alias wins, so `North Melbourne` never collapses to `Melbourne`.
+- **A line or total that moved is not priced.** Taking Collingwood -36.5 when
+  the market closed -35.5 is a different bet; converting between them needs an
+  assumed spread of match margins, which is a Rulebook parameter and not one to
+  invent. Those bets are reported with the difference so the size of the problem
+  is visible first.
+- `.xlsx` is read with the standard library, so there is nothing to install.
+
+**Scope.** Club football in covered leagues, plus AFL. It cannot reach international
 fixtures or AFL, which between them are about a third of the sample bet history.
 Those need Betfair Historical Data BASIC (free, last-traded-price per minute
 back to April 2015, no 90-day limit) or an AFL-specific odds source.
