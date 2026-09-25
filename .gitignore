@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+# Never commit Betfair credentials or pulled account data
+betfair_config.txt
+betfair_bets_with_ids.csv
+betfair_bets_raw.json
+*.xlsx
