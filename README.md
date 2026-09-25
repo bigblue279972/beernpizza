@@ -40,10 +40,36 @@ the password is prompted per run, never written to disk. A free *Delayed* App Ke
 is expected to be sufficient here, since cleared orders are account data rather
 than live market prices.
 
-**Step 2** - join those IDs to Betfair Historical Data BASIC, which is free and
-carries last-traded-price per minute back to April 2015. Per-minute granularity
-is all CLV needs; the paid ADVANCED/PRO tiers only add volume and the full
-ladder. Unlike the orders themselves, this price data has no 90-day limit.
+**Step 2 - `tools/clv_backfill.py`.** Backfills CLV from football-data.co.uk,
+which publishes free per-league season CSVs carrying **closing** odds (their
+convention is an extra `C`: `B365CH` is Bet365's closing home price, `PSCH/PSCD/
+PSCA` are Pinnacle's closing 1X2). Pinnacle's close is the sharpest public
+benchmark in soccer, so it is preferred, falling back to the market average.
+No App Key, no 90-day limit.
+
+```bash
+python tools/clv_backfill.py ExchangeBets_Settled.csv
+```
+
+Four things it is careful about:
+
+- **Opening odds are never silently substituted.** Only closing columns are
+  eligible; a file without them is reported, not quietly mis-benchmarked.
+- **The bookmaker margin is stripped** before comparing. A book price carries
+  overround and a Betfair price does not, so a raw comparison would show
+  phantom CLV on every bet.
+- **Team matching refuses a shared non-distinctive word.** A plain string ratio
+  scores `Man City` against `Man Utd` at 0.81 — high enough to price a bet off
+  the wrong fixture. Tokens are paired individually and the worst pairing gets
+  half the weight, which drops that to 0.55 while keeping `Nott'm Forest` ↔
+  `Nottingham Forest` at 0.93.
+- **Ambiguous matches are refused**, not guessed: the best fixture must also
+  beat the runner-up by a margin.
+
+**Scope.** Club football in covered leagues only. It cannot reach international
+fixtures or AFL, which between them are about a third of the sample bet history.
+Those need Betfair Historical Data BASIC (free, last-traded-price per minute
+back to April 2015, no 90-day limit) or an AFL-specific odds source.
 
 **Step 3** - capture the price at the off for new bets, so the log fills its own
 Closing Odds column.
