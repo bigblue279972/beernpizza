@@ -20,6 +20,32 @@ reading the row above it rather than re-summing the column from the top. The
 obvious `SUM($X$2:$Xr)` form is O(n^2) for the sheet as a whole and makes a
 few thousand rows sluggish on a laptop.
 
+## Betting ledger
+
+`tools/build_bet_ledger.py` builds a second, simpler workbook to Cliff's own
+column spec — Opening Balance, Competition, Teams, Bet Type, Odds Required,
+Betfair Odds, Bet Size, Win/Lose, Total Won/Lost, Closing Balance — in his order
+and under his names. A Date column goes in front (the balance graph needs one)
+and the extras sit after the ten, so nothing he specified is displaced.
+
+```bash
+python tools/build_bet_ledger.py "Betting Ledger.xlsx"
+LEDGER_ROWS=2001 python tools/build_bet_ledger.py "big.xlsx"    # more capacity
+```
+
+Four sheets: **Bet Log**, **Dashboard** (balance line graph, ROI, strike rate,
+drawdown), **Breakdowns** (competition, bet type, odds band, month), **Settings**,
+plus **How To Use**.
+
+The useful pairing is **Odds Required against Betfair Odds**: the first is what he
+decided he needed, the second is what he got, so the gap is a recorded claim about
+edge. The Dashboard tests that claim against what actually happened and counts how
+often a bet was taken *under* his own required price — a discipline measure that
+falls straight out of his own spec.
+
+Turnover counts the stake on a back and the **liability** on a lay, since that is
+what was really at risk; return on turnover is measured against that.
+
 ## Getting Closing Line Value
 
 CLV needs one number per bet: the last traded price on that selection at the
