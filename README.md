@@ -88,8 +88,10 @@ by which one carves the sample into the most columns on the most lines.
 
 Source files name the league with a short code (`E0`, `SP1`, `CHN`). Those are
 translated on the way in, so the Competition column reads `England Premier
-League`. 38 leagues are built in — football-data.co.uk's main division codes
-and its worldwide "extra" country codes.
+League`. 45 competitions are built in — football-data.co.uk's main division
+codes, its worldwide "extra" country codes, and the Australian ones Betfair
+writes plainly in the competition field (AFL, AFLW, SANFL, VFL, WAFL, and both
+A-Leagues, the women's under its pre-2021 `W-League` name as well).
 
 ```bash
 python tools/fixtures_import.py --write-lookup        # writes competitions.csv
@@ -111,6 +113,9 @@ python tools/fixtures_import.py f.csv --into db.xlsx --rename-existing
 - **Rows already in the target sheet keep their old values** unless
   `--rename-existing` is passed, and the run says so rather than leaving a
   column that is half codes and half names without comment.
+- **Spelling does not have to match.** A second-chance key strips punctuation
+  and spacing, so `A-League`, `A League` and `aleague` all resolve. An exact
+  key from `competitions.csv` still wins over a derived one.
 - Names are plain ASCII: a CSV edited in Excel on Windows is saved as cp1252,
   which makes a poor round trip of an accented character.
 

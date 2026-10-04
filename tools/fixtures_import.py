@@ -125,6 +125,20 @@ COMP_NAMES = {
     "SWE": "Sweden Allsvenskan",
     "SWZ": "Switzerland Super League",
     "USA": "USA Major League Soccer",
+    # Australia. Not a football-data.co.uk source -- Betfair writes these
+    # plainly in the competition field, so the plain forms are the keys that
+    # matter. The rest are spellings the same league turns up under.
+    "AFL": "Australia AFL",
+    "AFLW": "Australia AFLW",
+    "SANFL": "Australia SANFL",
+    "VFL": "Australia VFL",
+    "WAFL": "Australia WAFL",
+    "A-LEAGUE": "Australia A-League Men",
+    "A-LEAGUE MEN": "Australia A-League Men",
+    "ALM": "Australia A-League Men",
+    "A-LEAGUE WOMEN": "Australia A-League Women",
+    "ALW": "Australia A-League Women",
+    "W-LEAGUE": "Australia A-League Women",   # its name before the 2021 rebrand
 }
 LOOKUP_FILE = "competitions.csv"
 
@@ -138,21 +152,31 @@ def looks_like_code(v):
     return bool(CODE_RE.match((v or "").strip()))
 
 
+def norm_code(v):
+    """'A-League', 'A League' and 'aleague' are the same lookup key."""
+    return re.sub(r"[^A-Z0-9]", "", (v or "").upper())
+
+
 def load_comp_names(path=None):
     """Built-in names, overridden and extended by competitions.csv if present."""
-    names = dict(COMP_NAMES)
+    names = {k.upper(): v for k, v in COMP_NAMES.items()}
     path = path or LOOKUP_FILE
-    if not os.path.exists(path):
-        return names, None
-    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
-        for n, row in enumerate(csv.reader(fh), start=1):
-            if len(row) < 2:
-                continue
-            code, name = row[0].strip(), row[1].strip()
-            if not code or not name or code.lower() in ("code", "competition"):
-                continue                      # header row, or a half-filled line
-            names[code.upper()] = name
-    return names, path
+    used = None
+    if os.path.exists(path):
+        used = path
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
+            for row in csv.reader(fh):
+                if len(row) < 2:
+                    continue
+                code, name = row[0].strip(), row[1].strip()
+                if not code or not name or code.lower() in ("code", "competition"):
+                    continue                  # header row, or a half-filled line
+                names[code.upper()] = name
+    # Second-chance keys, so punctuation and spacing cannot miss a match.
+    # setdefault, so an exact key Cliff typed always wins over a derived one.
+    for key in list(names):
+        names.setdefault(norm_code(key), names[key])
+    return names, used
 
 
 def write_comp_lookup(path):
@@ -169,7 +193,7 @@ def readable_comp(value, names):
     v = (value or "").strip()
     if not v:
         return "", None
-    hit = names.get(v.upper())
+    hit = names.get(v.upper()) or names.get(norm_code(v))
     if hit:
         return hit, None
     return v, (v if looks_like_code(v) else None)
@@ -585,7 +609,9 @@ def main():
             sys.exit(f"STOPPED: {target} already exists. Delete or rename it "
                      "first -- this would overwrite your edits.")
         n = write_comp_lookup(target)
-        print(f"Wrote {target} with {n} competitions.\n"
+        uniq = len(set(COMP_NAMES.values()))
+        print(f"Wrote {target}: {n} rows covering {uniq} competitions "
+              "(some have more than one spelling).\n"
               "  Open it in Excel, change any name you like, add your own rows,\n"
               "  and save it as CSV in this folder. Every later run reads it.")
         if not args.source:

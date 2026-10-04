@@ -9,9 +9,17 @@ workbooks are: when the tool changes, the sheet is regenerated instead of
 drifting out of date.
 """
 
+import os
 import sys
 from datetime import date
 from xml.sax.saxutils import escape
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fixtures_import import COMP_NAMES              # noqa: E402
+
+# Counted, not typed in: the sheet would otherwise claim a stale number every
+# time a league is added to the tool.
+N_LEAGUES = len(set(COMP_NAMES.values()))
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
@@ -348,9 +356,14 @@ def build(path):
     f.append(P("Downloads name the league with a short code - <b>E0</b>, "
                "<b>SP1</b>, <b>CHN</b>. The script swaps those for readable "
                "names on the way in, so your Competition column says "
-               "<b>England Premier League</b>, not <b>E0</b>. It knows 38 "
-               "leagues out of the box and you do not have to do anything to "
-               "get them."))
+               "<b>England Premier League</b>, not <b>E0</b>. It knows "
+               f"{N_LEAGUES} competitions out of the box - the European "
+               "leagues, the worldwide ones, and the Australian ones - and "
+               "you do not have to do anything to get them."))
+
+    f.append(P("Spelling does not matter. <b>A-League</b>, <b>A League</b> "
+               "and <b>aleague</b> all land on the same name, and so do "
+               "<b>AFL</b> and <b>afl</b>.", "note"))
 
     f.append(H2("Codes it does not know"))
     f.append(P("Anything it cannot name is <b>left exactly as it was</b> - "
@@ -494,8 +507,9 @@ def build(path):
         "time, so you cannot double up by accident.",
         "Your existing spreadsheet's own layout, wherever the headings sit, "
         "even with a title line above them.",
-        "<b>Readable competition names</b> - 38 leagues known out of the box, "
-        "and a file you can edit for the rest. See Part 4.",
+        f"<b>Readable competition names</b> - {N_LEAGUES} known out of the "
+        "box, including AFL, AFLW, SANFL and both A-Leagues, plus a file you "
+        "can edit for the rest. See Part 4.",
     ]:
         f.append(P("&bull;&nbsp;&nbsp;" + b, "bullet"))
 
