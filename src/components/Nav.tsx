@@ -14,6 +14,7 @@ const TOP_LINKS = [
   { href: "/", label: "CLV Dashboard", icon: "◎" },
   { href: "/sports", label: "Sports", icon: "⚽" },
   { href: "/bankroll", label: "Bankroll", icon: "₿" },
+  { href: "/betfair", label: "Betfair Sync", icon: "⟳" },
   { href: "/research", label: "Research Links", icon: "🔗" },
   { href: "/settings", label: "Settings", icon: "⚙" },
 ];

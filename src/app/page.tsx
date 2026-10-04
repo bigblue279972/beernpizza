@@ -75,7 +75,7 @@ export default async function HomePage() {
           label="Avg CLV %"
           value={overall.avgClvPct !== null ? `${fmt(overall.avgClvPct)}%` : "—"}
           valueClass={avgClvClass}
-          sub={`${overall.settledCount} bets with closing prices`}
+          sub={`${verdict.sampleSize} bets with closing prices`}
         />
         <StatCard
           label="Avg Edge % (entry)"

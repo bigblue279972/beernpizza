@@ -30,8 +30,11 @@ export interface ClvChartPoint {
 }
 
 export async function getClvDashboard() {
+  // CLV only needs the price taken and the closing price — not the result — so
+  // bets still awaiting a result count toward CLV. Win rate and P&L below
+  // filter to settled bets themselves.
   const bets = await prisma.bet.findMany({
-    where: { placed: true, closingPrice: { not: null }, result: { not: "PENDING" } },
+    where: { placed: true, closingPrice: { not: null } },
     include: { sport: true },
     orderBy: { eventDate: "asc" },
   });
@@ -102,6 +105,7 @@ export async function getClvDashboard() {
   });
   const edgeValues = allPlacedBets.map((b) => b.edgePercent!);
   const avgEdgePct = mean(edgeValues);
+  const totalBetsPlaced = await prisma.bet.count({ where: { placed: true } });
 
   const { settings, currentDrawdownPct, stopLossTriggered } = await getBankrollSeries();
 
@@ -110,7 +114,7 @@ export async function getClvDashboard() {
     chartData,
     sportSummaries,
     overall: {
-      totalBetsPlaced: bets.length,
+      totalBetsPlaced,
       settledCount: settledBets.length,
       winRate: settledBets.length > 0 ? (wins / settledBets.length) * 100 : null,
       totalPnl,
@@ -131,7 +135,7 @@ function buildVerdict(avgClv: number | null, n: number): ClvVerdict {
   if (n < 30) {
     return {
       label: "INSUFFICIENT_DATA",
-      message: `Only ${n} settled bet${n === 1 ? "" : "s"} with closing prices. You need at least 30 before drawing conclusions — and really 100+ for statistical confidence. Keep logging.`,
+      message: `Only ${n} bet${n === 1 ? "" : "s"} with closing prices. You need at least 30 before drawing conclusions — and really 100+ for statistical confidence. Keep logging.`,
       avgClvPct: avgClv,
       sampleSize: n,
     };

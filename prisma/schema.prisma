@@ -74,6 +74,11 @@ model Bet {
   impliedProbTaken Float? // 100 / availablePrice, auto-calculated on creation
   edgePercent      Float? // noVigProb - impliedProbTaken, auto-calculated on creation
 
+  // Betfair Exchange linkage — lets us pull the actual Starting Price (closing
+  // line) for this exact selection. Null until the bet is linked to a market.
+  betfairMarketId    String? // e.g. "1.234567890"
+  betfairSelectionId String? // runner selectionId within that market
+
   // Settled after the close / result is known
   closingPrice Float?
   result       BetResult @default(PENDING)
@@ -113,6 +118,18 @@ model BankrollTransaction {
   type      String // DEPOSIT | WITHDRAWAL | ADJUSTMENT
   amount    Float
   note      String?
+}
+
+// Betfair Exchange API connection. The password is never stored — it's used
+// once to log in, and only the resulting (expiring) session token is kept.
+model BetfairSettings {
+  id             String    @id @default(cuid())
+  endpoint       String    @default("AU") // AU = betfair.com.au, UK = betfair.com
+  appKey         String?
+  username       String?
+  sessionToken   String?
+  sessionTokenAt DateTime?
+  updatedAt      DateTime  @updatedAt
 }
 
 model ResearchLink {
