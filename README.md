@@ -46,6 +46,44 @@ falls straight out of his own spec.
 Turnover counts the stake on a back and the **liability** on a lay, since that is
 what was really at risk; return on turnover is measured against that.
 
+## Getting fixtures into a spreadsheet
+
+`tools/fixtures_import.py` takes whatever a fixtures download actually is and
+writes clean rows into Excel.
+
+```bash
+python tools/fixtures_import.py --inspect downloaded.csv        # look first, write nothing
+python tools/fixtures_import.py downloaded.csv --out "Fixtures.xlsx"
+python tools/fixtures_import.py downloaded.csv --into "Fixture Dbase v7.xlsx"
+python tools/fixtures_import.py a.csv b.csv c.xlsx --into "Fixture Dbase v7.xlsx"
+```
+
+It reads a real CSV, a **tab-separated file named `.csv`** (the one that drops
+whole into column A), a semicolon file, or an `.xlsx`. The delimiter is sniffed
+by which one carves the sample into the most columns on the most lines.
+
+- **Columns are detected, not assumed**, and `--inspect` prints the mapping and
+  writes nothing, so the guess is checked before any file is touched. A header
+  does not qualify just because it starts with the right word: `Home Win Odds`
+  and `Date Downloaded` are barred from being the home-team or date column.
+- **Two sides in one column are split** — `Arsenal v Chelsea`, `Shanghai Port vs
+  Beijing Guoan` — and a file with no header row at all is read from its content.
+- **A day/month order the file does not prove is reported, not guessed.**
+  `04/05/2026` is 4 May or 5 April and nothing in the row says which. A day
+  above 12 anywhere in the column settles it; if nothing does, the run says
+  `ASSUMED` out loud and `--date-order` overrides it. A file whose own rows
+  disagree is refused rather than half-read.
+- **Dates are written as real Excel dates**, so Excel cannot re-read them in its
+  own locale — the failure where 04/05/2026 silently becomes 4 May.
+- **The target workbook is never edited in place.** `--into` copies it first and
+  writes to `<name> updated.xlsx`; `--in-place` is opt-in.
+- **It appends onto the target's own layout.** The sheet and its heading row are
+  found rather than assumed (a title line above the headings is normal in a
+  hand-built workbook), each heading is matched to a field, and columns it
+  cannot fill are listed and left blank — nothing is overwritten.
+- **Re-importing an overlapping download adds only what is new**, keyed on date
+  plus both normalised team names.
+
 ## Getting Closing Line Value
 
 CLV needs one number per bet: the last traded price on that selection at the
