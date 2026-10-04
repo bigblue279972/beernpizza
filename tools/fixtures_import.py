@@ -69,6 +69,112 @@ TIME_RE = re.compile(r"^\s*(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(am|pm)?\s*$", re.I
 NUM_DATE_RE = re.compile(r"^\s*(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})\s*$")
 
 
+# ------------------------------------------------------- competitions ----
+# Source files name the league with a short code. These are the readable
+# names written in its place. Two things to know about this table:
+#
+#   - It is a starting point, not gospel. Several of these leagues carry a
+#     sponsor's name or have been renamed in recent years, so the right
+#     label is partly a matter of preference.
+#   - Nothing here is hardcoded in the sense that matters: `--write-lookup`
+#     dumps the lot to competitions.csv, which is read back on every later
+#     run and overrides whatever is below. Edit that file in Excel rather
+#     than this one.
+#
+# Names are plain ASCII on purpose: a CSV edited in Excel on Windows is
+# saved as cp1252, and an accented character makes a round trip through
+# that badly.
+COMP_NAMES = {
+    # football-data.co.uk main divisions
+    "E0": "England Premier League",
+    "E1": "England Championship",
+    "E2": "England League One",
+    "E3": "England League Two",
+    "EC": "England National League",
+    "SC0": "Scotland Premiership",
+    "SC1": "Scotland Championship",
+    "SC2": "Scotland League One",
+    "SC3": "Scotland League Two",
+    "D1": "Germany Bundesliga",
+    "D2": "Germany 2. Bundesliga",
+    "I1": "Italy Serie A",
+    "I2": "Italy Serie B",
+    "SP1": "Spain La Liga",
+    "SP2": "Spain Segunda Division",
+    "F1": "France Ligue 1",
+    "F2": "France Ligue 2",
+    "N1": "Netherlands Eredivisie",
+    "B1": "Belgium Pro League",
+    "P1": "Portugal Primeira Liga",
+    "T1": "Turkey Super Lig",
+    "G1": "Greece Super League",
+    # football-data.co.uk worldwide "extra" files
+    "ARG": "Argentina Liga Profesional",
+    "AUT": "Austria Bundesliga",
+    "BRA": "Brazil Serie A",
+    "CHN": "China Super League",
+    "DNK": "Denmark Superliga",
+    "FIN": "Finland Veikkausliiga",
+    "IRL": "Ireland Premier Division",
+    "JPN": "Japan J1 League",
+    "MEX": "Mexico Liga MX",
+    "NOR": "Norway Eliteserien",
+    "POL": "Poland Ekstraklasa",
+    "ROU": "Romania Liga I",
+    "RUS": "Russia Premier League",
+    "SWE": "Sweden Allsvenskan",
+    "SWZ": "Switzerland Super League",
+    "USA": "USA Major League Soccer",
+}
+LOOKUP_FILE = "competitions.csv"
+
+# A short all-caps token with no spaces is a code waiting to be translated.
+# 'Chinese Super League' is already readable and is left alone, so it is not
+# reported as missing.
+CODE_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,5}$")
+
+
+def looks_like_code(v):
+    return bool(CODE_RE.match((v or "").strip()))
+
+
+def load_comp_names(path=None):
+    """Built-in names, overridden and extended by competitions.csv if present."""
+    names = dict(COMP_NAMES)
+    path = path or LOOKUP_FILE
+    if not os.path.exists(path):
+        return names, None
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as fh:
+        for n, row in enumerate(csv.reader(fh), start=1):
+            if len(row) < 2:
+                continue
+            code, name = row[0].strip(), row[1].strip()
+            if not code or not name or code.lower() in ("code", "competition"):
+                continue                      # header row, or a half-filled line
+            names[code.upper()] = name
+    return names, path
+
+
+def write_comp_lookup(path):
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["Code", "Readable Name"])
+        for code in sorted(COMP_NAMES, key=lambda c: (COMP_NAMES[c], c)):
+            w.writerow([code, COMP_NAMES[code]])
+    return len(COMP_NAMES)
+
+
+def readable_comp(value, names):
+    """Return (name to write, code that had no name or None)."""
+    v = (value or "").strip()
+    if not v:
+        return "", None
+    hit = names.get(v.upper())
+    if hit:
+        return hit, None
+    return v, (v if looks_like_code(v) else None)
+
+
 # ---------------------------------------------------------------- reading ----
 
 def sniff_delim(sample):
@@ -270,10 +376,10 @@ def norm_team(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
-def build_rows(rows, header_row, cmap, order):
+def build_rows(rows, header_row, cmap, order, comp_names=None):
     """Turn the raw table into fixture dicts, plus a list of skipped rows."""
     body = rows[header_row + 1:] if header_row is not None else rows
-    out, skipped = [], []
+    out, skipped, unknown = [], [], {}
     for n, raw in enumerate(body, start=(header_row or 0) + 2):
         if not any((c or "").strip() for c in raw):
             continue
@@ -292,9 +398,14 @@ def build_rows(rows, header_row, cmap, order):
             why = ("no readable date" if not d else "no two team names")
             skipped.append((n, why, " | ".join(raw[:5])))
             continue
+        comp = cell("comp")
+        if comp_names is not None:
+            comp, missing = readable_comp(comp, comp_names)
+            if missing:
+                unknown[missing] = unknown.get(missing, 0) + 1
         out.append({"date": d, "time": parse_time(cell("time")),
-                    "comp": cell("comp"), "home": home, "away": away})
-    return out, skipped
+                    "comp": comp, "home": home, "away": away})
+    return out, skipped, unknown
 
 
 def key_of(f):
@@ -346,7 +457,8 @@ def header_row_of(ws, limit=10):
     return best if best_hits >= 2 else None
 
 
-def append_into(src, out, fixtures, sheet_name):
+def append_into(src, out, fixtures, sheet_name, comp_names=None,
+                rename_existing=False):
     """Copy the target workbook, then append onto its own existing layout."""
     from openpyxl import load_workbook
     if os.path.abspath(src) != os.path.abspath(out):
@@ -420,10 +532,26 @@ def append_into(src, out, fixtures, sheet_name):
         have.add(key_of(f))
         added += 1
 
+    # Rows that were already in the sheet keep whatever competition value
+    # they were written with. Left alone, the column ends up half codes and
+    # half names, which is worse than either -- so this translates them too,
+    # on request.
+    renamed = 0
+    if rename_existing and comp_names and "comp" in tmap:
+        for r in range(hrow + 1, last + 1):
+            cell = ws.cell(row=r, column=tmap["comp"] + 1)
+            was = cell.value
+            if not isinstance(was, str) or not was.strip():
+                continue
+            now, _missing = readable_comp(was, comp_names)
+            if now != was:
+                cell.value = now
+                renamed += 1
+
     wb.save(out)
     unfilled = [h for j, h in enumerate(header)
                 if h and j not in tmap.values()]
-    return ws.title, hrow, added, dupes, unfilled
+    return ws.title, hrow, added, dupes, unfilled, renamed
 
 
 # ------------------------------------------------------------------ main -----
@@ -431,7 +559,7 @@ def append_into(src, out, fixtures, sheet_name):
 def main():
     ap = argparse.ArgumentParser(
         description="Import a downloaded fixtures file into an Excel sheet.")
-    ap.add_argument("source", nargs="+", help="downloaded file(s): csv/txt/xlsx")
+    ap.add_argument("source", nargs="*", help="downloaded file(s): csv/txt/xlsx")
     ap.add_argument("--inspect", action="store_true",
                     help="show the detected columns and write nothing")
     ap.add_argument("--out", help="workbook to write (default 'Fixtures.xlsx')")
@@ -441,9 +569,35 @@ def main():
                     help="write back over --into instead of a copy")
     ap.add_argument("--date-order", choices=["dmy", "mdy"],
                     help="force day-first or month-first when the file is ambiguous")
+    ap.add_argument("--keep-codes", action="store_true",
+                    help="leave competition codes as they are, do not translate")
+    ap.add_argument("--comp-names", metavar="FILE",
+                    help=f"competition lookup to use (default {LOOKUP_FILE})")
+    ap.add_argument("--write-lookup", action="store_true",
+                    help=f"write {LOOKUP_FILE} with the built-in names, to edit")
+    ap.add_argument("--rename-existing", action="store_true",
+                    help="with --into, also translate codes already in the sheet")
     args = ap.parse_args()
 
-    all_fx, seen = [], set()
+    if args.write_lookup:
+        target = args.comp_names or LOOKUP_FILE
+        if os.path.exists(target):
+            sys.exit(f"STOPPED: {target} already exists. Delete or rename it "
+                     "first -- this would overwrite your edits.")
+        n = write_comp_lookup(target)
+        print(f"Wrote {target} with {n} competitions.\n"
+              "  Open it in Excel, change any name you like, add your own rows,\n"
+              "  and save it as CSV in this folder. Every later run reads it.")
+        if not args.source:
+            return
+    elif not args.source:
+        ap.error("name at least one file to import, "
+                 "or use --write-lookup on its own")
+
+    comp_names, lookup_used = (None, None) if args.keep_codes else \
+        load_comp_names(args.comp_names)
+
+    all_fx, seen, unknown_all = [], set(), {}
     for path in args.source:
         if not os.path.exists(path):
             sys.exit(f"STOPPED: cannot find {path}")
@@ -506,7 +660,9 @@ def main():
             print("  !! check one date against the source website before you "
                   "trust these. Override with --date-order mdy if it is wrong.")
 
-        fx, skipped = build_rows(rows, hrow, cmap, order)
+        fx, skipped, unknown = build_rows(rows, hrow, cmap, order, comp_names)
+        for code, n in unknown.items():
+            unknown_all[code] = unknown_all.get(code, 0) + n
         print(f"  usable fixtures: {len(fx)}; unusable rows: {len(skipped)}")
         for n, why, preview in skipped[:5]:
             print(f"    row {n}: {why} -- {preview[:70]}")
@@ -534,6 +690,23 @@ def main():
                                f["comp"], f["home"]))
     print(f"\n{len(all_fx)} fixtures ready (duplicates across files removed).")
 
+    if comp_names is None:
+        print("competition names: left as codes (--keep-codes).")
+    else:
+        named = sum(1 for f in all_fx
+                    if f["comp"] and f["comp"] not in unknown_all)
+        src = f"built-in names + {lookup_used}" if lookup_used else "built-in names"
+        print(f"competition names: {named} of {len(all_fx)} readable ({src}).")
+        if unknown_all:
+            worst = sorted(unknown_all.items(), key=lambda kv: -kv[1])
+            print("  no readable name for these codes, left exactly as they were:")
+            for code, n in worst[:12]:
+                print(f"    {code:<8} {n} fixture{'' if n == 1 else 's'}")
+            if len(worst) > 12:
+                print(f"    ... and {len(worst) - 12} more")
+            print(f"  to name them: add a row to {lookup_used or LOOKUP_FILE}"
+                  + ("" if lookup_used else " (--write-lookup creates it)"))
+
     if args.inspect:
         print("--inspect: nothing written. Re-run without --inspect to write.")
         return
@@ -552,11 +725,19 @@ def main():
         else:
             base, ext = os.path.splitext(args.into)
             out = args.out or f"{base} updated{ext}"
-        sheet, hrow, added, dupes, unfilled = append_into(
-            args.into, out, all_fx, args.sheet)
+        sheet, hrow, added, dupes, unfilled, renamed = append_into(
+            args.into, out, all_fx, args.sheet, comp_names,
+            args.rename_existing)
         print(f"Wrote {out}")
         print(f"  sheet '{sheet}' (headings on row {hrow}): "
               f"{added} fixtures added, {dupes} already there and left alone")
+        if args.rename_existing:
+            print(f"  {renamed} competition "
+                  f"{'name' if renamed == 1 else 'names'} rewritten on rows "
+                  "that were already in the sheet")
+        elif comp_names and added:
+            print("  rows already in the sheet keep their old competition "
+                  "values; --rename-existing translates those too")
         if unfilled:
             print("  columns it could not fill (left blank, nothing overwritten): "
                   + ", ".join(unfilled[:8])

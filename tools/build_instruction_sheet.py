@@ -343,8 +343,71 @@ def build(path):
                "import at all rather than getting half the rows wrong. That "
                "is deliberate.", "note"))
 
+    # ------------------------------------------------------- comp names ----
+    f.extend(H1("PART 4  -  Readable competition names"))
+    f.append(P("Downloads name the league with a short code - <b>E0</b>, "
+               "<b>SP1</b>, <b>CHN</b>. The script swaps those for readable "
+               "names on the way in, so your Competition column says "
+               "<b>England Premier League</b>, not <b>E0</b>. It knows 38 "
+               "leagues out of the box and you do not have to do anything to "
+               "get them."))
+
+    f.append(H2("Codes it does not know"))
+    f.append(P("Anything it cannot name is <b>left exactly as it was</b> - "
+               "never blanked, never guessed - and listed at the end of the "
+               "run:"))
+    f.append(code(
+        "competition names: 3 of 5 readable (built-in names).",
+        "  no readable name for these codes, left exactly as they were:",
+        "    XYZ9     1 fixture",
+        "    ZZ       1 fixture",
+        "  to name them: add a row to competitions.csv",
+    ))
+    f.append(P("A name that is already readable, like <b>Chinese Super "
+               "League</b>, passes straight through and is not reported. "
+               "Only short codes are.", "note"))
+
+    f.append(H2("Making your own names"))
+    f.append(P("<b>1.</b>&nbsp;&nbsp;Run this once. It writes a file listing "
+               "every league it knows:", "step"))
+    f.append(code(r"python tools\fixtures_import.py --write-lookup"))
+    f.append(P("<b>2.</b>&nbsp;&nbsp;Open <b>competitions.csv</b> in Excel. "
+               "Two columns: the code, and the name you want written.",
+               "step"))
+    f.append(P("<b>3.</b>&nbsp;&nbsp;Change any name you do not like, and add "
+               "a row for anything missing. To name that <b>XYZ9</b> above, "
+               "put <b>XYZ9</b> in the first column and the real league name "
+               "in the second.", "step"))
+    f.append(P("<b>4.</b>&nbsp;&nbsp;Save it. Keep it as <b>CSV</b> when Excel "
+               "asks, and leave it in <b>C:\\Users\\Cliff\\betting</b>. "
+               "Every later run reads it automatically - there is no flag to "
+               "remember.", "step"))
+    f.append(P("Your file wins over the built-in names, so if you would rather "
+               "see <b>The Prem</b> than <b>England Premier League</b>, just "
+               "change that row.", "note"))
+    f.append(P("It will not overwrite the file once it exists, so your edits "
+               "are safe if you run <b>--write-lookup</b> again by mistake.",
+               "note"))
+
+    f.append(H2("Fixtures already in your database"))
+    f.append(P("Rows that were already in the spreadsheet keep whatever they "
+               "were written with, so a database built before today ends up "
+               "half codes and half names. To translate those as well, add "
+               "<b>--rename-existing</b>:"))
+    f.append(code(r'python tools\fixtures_import.py downloaded.csv '
+                  r'--into "Fixture Dbase v7.xlsx" --rename-existing'))
+    f.append(P("It still writes to a copy, so you can check it before you "
+               "keep it. Worth doing once, then never again.", "note"))
+
+    f.append(warn(
+        "If you would rather keep the codes",
+        "Add <b>--keep-codes</b> to any command and nothing is translated at "
+        "all. Use this if something downstream - a formula, a lookup, a "
+        "filter - relies on the short code being there.",
+    ))
+
     # ---------------------------------------------------------- commands ----
-    f.extend(H1("PART 4  -  Command reference"))
+    f.extend(H1("PART 5  -  Command reference"))
     f.append(P("Everything below is typed after "
                "<b>python tools\\fixtures_import.py</b>."))
     f.extend(grid([
@@ -365,13 +428,21 @@ def build(path):
          "it is day-first."],
         ["--date-order mdy",
          "Force month-first. Same, for an American source."],
+        ["--write-lookup",
+         "Writes <b>competitions.csv</b> so you can edit the league names. "
+         "Use it on its own, without a file name."],
+        ["--rename-existing",
+         "With <b>--into</b>, also translates codes on rows already in the "
+         "sheet."],
+        ["--keep-codes",
+         "Leaves competitions as codes. Nothing is translated."],
         ["--in-place",
          "Write straight over the existing file instead of making a copy. "
          "<b>Avoid this</b> unless you have a backup."],
     ], [50 * mm, PAGE_W - 2 * MARGIN - 50 * mm], mono_col=0))
 
     # ----------------------------------------------------------- trouble ----
-    f.extend(H1("PART 5  -  If something goes wrong"))
+    f.extend(H1("PART 6  -  If something goes wrong"))
     f.extend(grid([
         ["What you see", "What it means and what to do"],
         ["<b>'python' is not recognized</b>",
@@ -406,7 +477,7 @@ def build(path):
     ], [48 * mm, PAGE_W - 2 * MARGIN - 48 * mm]))
 
     # ------------------------------------------------------------ limits ----
-    f.extend(H1("PART 6  -  What this does and does not do"))
+    f.extend(H1("PART 7  -  What this does and does not do"))
     f.append(H2("What it handles for you"))
     for b in [
         "A file that is really <b>tab-separated but named .csv</b> - the one "
@@ -423,6 +494,8 @@ def build(path):
         "time, so you cannot double up by accident.",
         "Your existing spreadsheet's own layout, wherever the headings sit, "
         "even with a title line above them.",
+        "<b>Readable competition names</b> - 38 leagues known out of the box, "
+        "and a file you can edit for the rest. See Part 4.",
     ]:
         f.append(P("&bull;&nbsp;&nbsp;" + b, "bullet"))
 
@@ -435,6 +508,9 @@ def build(path):
         "<b>E0</b>, <b>SP1</b> - not Premier League. Say the word and I will "
         "add a lookup for readable names.",
         "<b>It does not bring odds across</b>, only the fixture itself.",
+        "<b>It cannot name a league it has never seen</b>, and there is no "
+        "list anywhere of every competition code in the world. Codes it does "
+        "not know are listed at the end of the run for you to add.",
     ]:
         f.append(P("&bull;&nbsp;&nbsp;" + b, "bullet"))
 

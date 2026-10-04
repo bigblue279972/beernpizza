@@ -84,6 +84,36 @@ by which one carves the sample into the most columns on the most lines.
 - **Re-importing an overlapping download adds only what is new**, keyed on date
   plus both normalised team names.
 
+### Readable competition names
+
+Source files name the league with a short code (`E0`, `SP1`, `CHN`). Those are
+translated on the way in, so the Competition column reads `England Premier
+League`. 38 leagues are built in — football-data.co.uk's main division codes
+and its worldwide "extra" country codes.
+
+```bash
+python tools/fixtures_import.py --write-lookup        # writes competitions.csv
+python tools/fixtures_import.py f.csv --keep-codes    # translate nothing
+python tools/fixtures_import.py f.csv --into db.xlsx --rename-existing
+```
+
+- **The built-in table is a starting point, not gospel.** Several of these
+  leagues carry a sponsor's name or have been renamed, so the right label is
+  partly preference. `--write-lookup` dumps the lot to `competitions.csv`,
+  which is read on every later run with no flag to remember and **overrides**
+  the built-ins. It refuses to overwrite that file once it exists.
+- **A code with no name is left exactly as it was** — never blanked, never
+  guessed — and reported at the end of the run with a fixture count, so the
+  gap is visible and fixable.
+- **An already-readable value is not reported.** Only a short all-caps token
+  with no spaces is treated as a code, so `Chinese Super League` passes
+  through silently while `XYZ9` is flagged.
+- **Rows already in the target sheet keep their old values** unless
+  `--rename-existing` is passed, and the run says so rather than leaving a
+  column that is half codes and half names without comment.
+- Names are plain ASCII: a CSV edited in Excel on Windows is saved as cp1252,
+  which makes a poor round trip of an accented character.
+
 ### The printed instruction sheet
 
 `tools/build_instruction_sheet.py` builds the four-page PDF Cliff keeps by the

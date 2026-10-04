@@ -7,3 +7,4 @@ betfair_bets_with_ids.csv
 betfair_bets_raw.json
 *.xlsx
 *.pdf
+competitions.csv
