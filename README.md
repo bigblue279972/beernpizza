@@ -84,6 +84,22 @@ by which one carves the sample into the most columns on the most lines.
 - **Re-importing an overlapping download adds only what is new**, keyed on date
   plus both normalised team names.
 
+### The printed instruction sheet
+
+`tools/build_instruction_sheet.py` builds the four-page PDF Cliff keeps by the
+laptop: one-time setup, the two commands, how to read the `--inspect` output,
+the day/month warning, a flag reference and a troubleshooting table.
+
+```bash
+pip install reportlab
+python tools/build_instruction_sheet.py "Fixtures Import - Instructions.pdf"
+```
+
+A builder rather than a hand-written PDF for the same reason the workbooks are:
+when the tool changes the sheet is regenerated instead of drifting out of date.
+Command blocks measure their own glyph width and shrink to fit, since a command
+clipped at the panel edge is a command that cannot work.
+
 ## Getting Closing Line Value
 
 CLV needs one number per bet: the last traded price on that selection at the
