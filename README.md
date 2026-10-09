@@ -227,6 +227,24 @@ byte-identical to the tested v8 and the Power Query to v7; 426 values on the tab
 across six test bets (cleared, capped, gated, no fraction, full Kelly) match an
 independent calculation; the best-bets section matches the pricers' own values.
 
+### Friday-night games missing after Adelaide's midnight
+
+The `Slate` query keeps fixtures dated from `Today` to `Today + DaysAhead`, with
+`Today = Date.From(DateTime.LocalNow())` — Adelaide's date. Fixture dates are UK
+dates. From Adelaide's midnight until the UK's, a game that night in the UK carries
+"yesterday's" date and is dropped before it kicks off: every Friday-night European
+game, through exactly the hours the operation bets. The one-line fix, made by hand
+in the Power Query editor because the query package cannot be rewritten and tested
+here, is
+
+```
+Today   = Date.From(DateTime.LocalNow() - #duration(0, 10, 30, 0)),
+```
+
+Subtracting the largest Adelaide–UK gap (10.5 h) never drops a game early; at the
+smaller gaps the UK day is held an hour or two past its midnight, which is harmless.
+`fixtures_doctor.py` counts its window in UK dates the same way.
+
 ### When European fixtures don't appear
 
 `tools/fixtures_doctor.py` — double-click it, or `python fixtures_doctor.py`.

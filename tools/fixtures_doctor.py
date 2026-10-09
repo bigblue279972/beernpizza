@@ -205,7 +205,7 @@ def verdict(rep, today):
 
 def report(rep, today, cache):
     say(f"Cache folder: {cache}")
-    say(f"Today: {today:%a %d %b %Y}   window the workbook shows: "
+    say(f"Today (UK date): {today:%a %d %b %Y}   window the workbook shows: "
         f"to {today + timedelta(days=DAYS_AHEAD):%a %d %b}\n")
     fx = rep["fixtures"]
     if fx:
@@ -306,7 +306,11 @@ def main():
     ap.add_argument("--no-pause", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--today", help=argparse.SUPPRESS)          # testing only
     args = ap.parse_args()
-    today = date.fromisoformat(args.today) if args.today else date.today()
+    # Fixture dates are UK dates. Count "today" in UK terms -- Adelaide time less the
+    # largest gap, 10.5 hours -- as the workbook does once its one-line fix is in, so
+    # a Friday-night UK game is not called yesterday's after Adelaide's midnight.
+    today = (date.fromisoformat(args.today) if args.today
+             else (datetime.now() - timedelta(hours=10, minutes=30)).date())
 
     cache = Path(args.cache) if args.cache else next((c for c in CACHE_GUESSES if c.exists()), None)
     try:
