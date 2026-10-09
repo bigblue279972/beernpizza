@@ -51,6 +51,7 @@ NAMES = {"E0": "EPL", "E1": "Championship", "E2": "EFL League One",
          "P1": "Portugal Primeira Liga", "G1": "Greece Super League"}
 EXTRA = ["JPN", "USA", "BRA", "ARG", "MEX", "CHN"]
 DAYS_AHEAD, DAYS_BACK, HALF_LIFE, MIN_DATA = 4, 900, 180, 20
+RESULTS_STALE_DAYS = 3        # matches are played every few days; older files miss them
 
 BASE = os.environ.get("FOOTBALL_DATA_BASE", "https://www.football-data.co.uk")
 CACHE_GUESSES = [
@@ -99,7 +100,10 @@ def season_file(season, div):
 def replay(cache, today):
     """Walk the workbook's European steps on the real files; count what survives."""
     rep = {"fixtures": None, "bom": False, "seasons": {}, "stale_names": [],
-           "per_div": {}, "dropped": [], "latest": None}
+           "per_div": {}, "dropped": [], "latest": None, "results_age": None}
+    ages = [(datetime.now() - datetime.fromtimestamp((cache / season_file(CURRENT, d)).stat().st_mtime)).days
+            for d in MAIN_DIVS if (cache / season_file(CURRENT, d)).exists()]
+    rep["results_age"] = max(ages) if ages else None
 
     # ratings: which (league, team) pairs have results the workbook would use
     weight_by_div, teams = {}, set()
@@ -191,6 +195,10 @@ def verdict(rep, today):
     if shows == 0:
         return "no_ratings", ("the results files are there but don't cover these teams. They are "
                               "probably old seasons, or the wrong leagues.")
+    if rep["results_age"] is not None and rep["results_age"] > RESULTS_STALE_DAYS:
+        return "stale_results", (f"{shows} European games will show, but your results files are "
+                                 f"{rep['results_age']} days old, so the ratings miss every game "
+                                 "played since.")
     return "ok", (f"{shows} European games should show. If v9 still doesn't show them, "
                   "Refresh All didn't finish - run it again.")
 
@@ -207,7 +215,9 @@ def report(rep, today, cache):
     have = {k: v for k, v in rep["seasons"].items()}
     cur = [d for d in MAIN_DIVS if season_file(CURRENT, d) in have]
     prev = [d for d in MAIN_DIVS if season_file(PREVIOUS, d) in have]
+    age = rep["results_age"]
     say(f"2026/27 results       {len(cur)} of 15 leagues"
+        + ("" if age is None else f", downloaded {age} day{'' if age == 1 else 's'} ago")
         + ("" if len(cur) == 15 else f"  (missing: {', '.join(d for d in MAIN_DIVS if d not in cur)})"))
     say(f"2025/26 results       {len(prev)} of 15 leagues"
         + ("" if len(prev) == 15 else f"  (missing: {', '.join(d for d in MAIN_DIVS if d not in prev)})"))
@@ -225,7 +235,8 @@ def report(rep, today, cache):
         for lg, h, a, why in rep["dropped"][:6]:
             say(f"  {lg}: {h} v {a}  - {why}")
     code, text = verdict(rep, today)
-    say("\n" + ("GOOD: " if code == "ok" else "PROBLEM: ") + text)
+    tag = {"ok": "GOOD: ", "stale_results": "OUT OF DATE: "}.get(code, "PROBLEM: ")
+    say("\n" + tag + text)
     return code
 
 
@@ -252,6 +263,7 @@ def install(cache, name, data):
     target = cache / name
     if target.exists():
         if target.read_bytes() == data:
+            os.utime(target, None)    # confirmed current today, even with no new games
             return "unchanged"
         keep = cache / "_previous"
         keep.mkdir(exist_ok=True)
@@ -309,7 +321,7 @@ def main():
             return 0
 
         if code in ("missing_fixtures", "bom", "bad_fixtures", "stale_fixtures",
-                    "no_results", "no_ratings"):
+                    "no_results", "no_ratings", "stale_results"):
             have_prev = {d for d in MAIN_DIVS if (cache / season_file(PREVIOUS, d)).exists()}
             n_prev = 15 - len(have_prev)
             say(f"\nI can fix this by downloading fixtures.csv and the 15 current-season results "

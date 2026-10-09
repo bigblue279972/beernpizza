@@ -247,6 +247,8 @@ under the exact names the workbook reads. A download must parse as a fixtures or
 results file before it replaces anything — an error page is refused — and replaced
 files are kept in `cache\_previous`. The `new_` files are never touched.
 
+It also flags **ratings built from old results**: when the current-season files are more than three days old it says OUT OF DATE and offers the same download, so one double-click before each slate keeps results, ratings and fixtures current. A re-download identical to the old file is marked as checked today, so a week with no new games doesn't nag.
+
 Driven against a stand-in for the football-data site through twelve cases: missing
 results, browser-named results, a September `fixtures.csv`, no `fixtures.csv`, a BOM,
 an error page (cache byte-identical afterwards), no internet, the user answering no,
