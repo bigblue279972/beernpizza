@@ -135,6 +135,59 @@ when the tool changes the sheet is regenerated instead of drifting out of date.
 Command blocks measure their own glyph width and shrink to fit, since a command
 clipped at the panel edge is a command that cannot work.
 
+## Fixture Dbase v7 → v8
+
+`tools/patch_fixture_dbase.py` repairs Cliff's own pricing workbook. Standard
+library only.
+
+```bash
+python tools/patch_fixture_dbase.py "FIXTURE DBASE v7.xlsx" "FIXTURE DBASE v8.xlsx"
+```
+
+The workbook is a complete pricer: three Power Query queries (`Results`,
+`Ratings`, `Slate`) read football-data.co.uk files from a local cache, build
+decayed attack/defence ratings with shrinkage, and land each upcoming fixture
+with expected goals in the `Slate` table; FIXTURES reads that table and the
+SOCCER and AFL tabs price a chosen fixture. So the fixtures feed already
+exists and is better than `fixtures_import.py` for this purpose — the importer
+cannot produce expected goals, so nothing it writes could be priced.
+
+What the patch fixes:
+
+- **Kickoff times were an hour early, soon two.** Column H added a typed-in
+  "Hours ahead of UK" of 8.5, right only while Adelaide is on standard time
+  and the UK on summer time. Adelaide went to daylight saving on 4 Oct 2026;
+  the UK leaves summer time on 25 Oct. Each fixture now works out its own gap
+  from its own date and time (helper columns J and K), testing the UK change
+  in UK clock time and the Adelaide change on the UTC instant, since both
+  Adelaide switches fall at 16:30 UTC on a Saturday — mid-evening UK time,
+  exactly when the European fixtures are on.
+- **Fixtures 147–162 could not be priced and 163+ vanished.** FIXTURES ran to
+  row 166, SOCCER looked up to row 150. Both now run to row 200, and A2 states
+  the count, turning red when a download does not fit or has gone stale.
+- **The guidance pointed at formula cells.** README and FIXTURES A2 said to type
+  AFL into rows 55–60, which hold `Slate` formulas. AFL already lives at row
+  201, where the AFL tab looks; the text now says so.
+- A blank source time shows as `time TBC`, not as midnight UK plus the gap.
+
+**Why not openpyxl.** It does not round-trip Power Query: the queries live in a
+`DataMashup` part it drops on save, and it reads FIXTURES' single-cell
+dynamic-array formulas as plain values — which briefly led to the wrong
+diagnosis here, until the raw XML showed the formulas. The patch edits only the
+worksheet XML it needs and copies every other part byte for byte. It refuses a
+file whose layout differs from v7's, including one it has already patched, and
+never overwrites its input.
+
+Verified by stripping every cached result and recomputing in LibreOffice, which
+first reproduced all 360 FIXTURES cells of the unpatched v7 exactly as Excel
+had saved them. On v8: FIXTURES and SOCCER match Excel's own values cell for
+cell, with every September kickoff identical because the computed gap is 8.5
+for September; AFL matches the unpatched v7 in the same engine; the Power Query,
+connection, query-table, table, DATA and AFL parts are byte-identical. 416
+crafted kickoffs around every clock change from 2026 to 2028 match the IANA
+time-zone database. A 196-fixture slate fills to row 200 and SOCCER prices
+fixture 196; 200 fixtures raise the warning and leave the AFL row alone.
+
 ## Getting Closing Line Value
 
 CLV needs one number per bet: the last traded price on that selection at the
