@@ -188,6 +188,45 @@ crafted kickoffs around every clock change from 2026 to 2028 match the IANA
 time-zone database. A 196-fixture slate fills to row 200 and SOCCER prices
 fixture 196; 200 fixtures raise the warning and leave the AFL row alone.
 
+### The KELLY tab (v8 → v9)
+
+`tools/add_kelly_tab.py` adds a Kelly sandbox to a patched v8.
+
+```bash
+python tools/patch_fixture_dbase.py "FIXTURE DBASE v7.xlsx" "FIXTURE DBASE v8.xlsx"
+python tools/add_kelly_tab.py       "FIXTURE DBASE v8.xlsx" "FIXTURE DBASE v9.xlsx"
+```
+
+One yellow dial — the Kelly fraction — drives everything on the tab: a single
+bet worked through (fair and required price, edge, full Kelly, the stake at the
+chosen fraction, after the cap, and the units stake for comparison); the same
+bet at eight fractions, with expected profit, log growth per bet, bets to double
+and the chance the bank halves at some point; and the SOCCER and AFL decision
+blocks' own best bets with the Kelly stake beside the units stake.
+
+- **A sandbox, not a change to staking.** STAKE $ on SOCCER and AFL still comes
+  from units. Kelly sizes off the model's own probability, so an optimistic model
+  over-bets exactly where it is most wrong; comparing the two on real bets comes
+  before switching.
+- **The same Kelly the pricers already compute**, net of commission:
+  `f* = (p(1+b) − 1)/b`, `b = (price − 1)(1 − commission)`. Stakes are gated on
+  the required price, as the pricers are, and capped at SETTINGS' max units.
+- **The halving columns** use the continuous-time result for a fraction `c` of
+  full Kelly: the bank ever falls to `x` of its start with probability
+  `x^(2/c − 1)`. The second column assumes only half the model's edge is real,
+  which makes `c` an effective `2c`. A 4,000-path simulation at September's
+  average bet gives 0.6%, 13.0% and 47.9% against the formula's 0.8%, 12.5% and
+  50.0%; with half the edge real the formula runs a few points high, so it errs
+  cautious.
+- **A bet that clears the required price always claims an edge of at least the
+  buffer.** Betting at `D ≥ R` gives `p(1+(D−1)(1−c)) − 1 ≥ buffer`, so with a
+  10% buffer every BET the pricer shows claims 10%+, and Kelly stakes accordingly.
+
+Verified the same way as the patch: FIXTURES, SOCCER, AFL and DATA are
+byte-identical to the tested v8 and the Power Query to v7; 426 values on the tab
+across six test bets (cleared, capped, gated, no fraction, full Kelly) match an
+independent calculation; the best-bets section matches the pricers' own values.
+
 ## Getting Closing Line Value
 
 CLV needs one number per bet: the last traded price on that selection at the
