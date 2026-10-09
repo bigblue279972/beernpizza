@@ -227,6 +227,32 @@ byte-identical to the tested v8 and the Power Query to v7; 426 values on the tab
 across six test bets (cleared, capped, gated, no fraction, full Kelly) match an
 independent calculation; the best-bets section matches the pricers' own values.
 
+### When European fixtures don't appear
+
+`tools/fixtures_doctor.py` — double-click it, or `python fixtures_doctor.py`.
+
+The workbook's other leagues each need one file (`new_JPN.csv` holds both results
+and fixtures). European leagues need two sets: `fixtures.csv` for the games and
+`mmz4281_<season>_<div>.csv` for the results the ratings come from. When either
+is missing, misnamed or stale, Power Query drops every European game without an
+error, while the other leagues carry on — exactly the symptom reported.
+
+The doctor replays the workbook's own rules on the files in the cache folder (the
+15 leagues, today to four days ahead, results within 900 days, at least 20
+decay-weighted games per league) and names the first step where the games
+disappear: no `fixtures.csv`, a hidden BOM, an old file, no results files, results
+saved under the browser's name (`E0.csv`), or individual teams with no history.
+It then offers, asking first, to download the European files from football-data.co.uk
+under the exact names the workbook reads. A download must parse as a fixtures or
+results file before it replaces anything — an error page is refused — and replaced
+files are kept in `cache\_previous`. The `new_` files are never touched.
+
+Driven against a stand-in for the football-data site through twelve cases: missing
+results, browser-named results, a September `fixtures.csv`, no `fixtures.csv`, a BOM,
+an error page (cache byte-identical afterwards), no internet, the user answering no,
+a replaced file kept, a promoted team named, and the pause that keeps a double-clicked
+window open.
+
 ## Getting Closing Line Value
 
 CLV needs one number per bet: the last traded price on that selection at the
