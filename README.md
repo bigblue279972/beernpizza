@@ -227,6 +227,22 @@ byte-identical to the tested v8 and the Power Query to v7; 426 values on the tab
 across six test bets (cleared, capped, gated, no fraction, full Kelly) match an
 independent calculation; the best-bets section matches the pricers' own values.
 
+### Keeping Cliff's own settings
+
+Every build carries v7's defaults: max 1 unit per bet and no Kelly fraction. With a
+cap of 1 every flagged bet stakes exactly 1 unit, because a price that clears the
+required price always has an edge of at least the buffer, so a fresh download looks
+like the staking has broken. `tools/apply_my_settings.py` writes his values into
+the yellow cells of a built file, changing only the SETTINGS (and KELLY) sheet:
+
+```bash
+python tools/apply_my_settings.py "FIXTURE DBASE v9.xlsx" "FIXTURE DBASE v9 - 3 units.xlsx" --max-units 3
+```
+
+His current choice is **max 3 units per bet**. On a recalculated copy, stakes
+scale with the edge (2.86 and 2.65 units on test prices), cap at 3.00, and are 0
+below the required price.
+
 ### Friday-night games missing after Adelaide's midnight
 
 The `Slate` query keeps fixtures dated from `Today` to `Today + DaysAhead`, with
