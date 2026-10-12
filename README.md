@@ -227,6 +227,42 @@ byte-identical to the tested v8 and the Power Query to v7; 426 values on the tab
 across six test bets (cleared, capped, gated, no fraction, full Kelly) match an
 independent calculation; the best-bets section matches the pricers' own values.
 
+### Market blend (v9 → v10)
+
+`tools/add_market_blend.py` changes how SOCCER judges a bet, after the bank fell
+from $1,450 to $962 on bets that were almost all outsiders.
+
+```bash
+python tools/add_market_blend.py "FIXTURE DBASE v9.xlsx" "FIXTURE DBASE v10.xlsx"
+```
+
+**The fault.** The pricer bet when the model's chance beat the price by the buffer,
+a *relative* margin. Model error of a few points is a large relative margin on an
+outsider and a small one on a favourite, so error passes the gate far more often at
+long prices, and the stake rule puts the biggest stakes there. A simulated fair
+market reproduces it: about 3 bets in 4 on the outsider, almost none on the
+favourite, a claimed edge near +20%, a real value near −5%.
+
+**The change.** The chance used is `w × model + (1 − w) × 1/price` (SETTINGS B11,
+30%), and nothing is backed above SETTINGS B12 (4.00). Blending alone does not
+remove the tilt — the blended edge is `w × model edge + (1 − w) × market edge`, so
+a fixed buffer simply asks the model's own edge to be about `buffer / w` — and in
+simulation the remaining bets were still 99% outsiders; the ceiling removes them,
+and the two together flag nothing in a fair market. REQUIRED PRICE is solved for
+the blend (the larger root of a quadratic; the smaller is always below 1), and
+EDGE, UNITS, STAKE and KELLY all use the blended chance. KELLY's sandbox follows
+the same rules. AFL is unchanged.
+
+**How strict.** At 2.00 the model must say 72% (v9: 57%); at 3.00, 50% (v9: 38%).
+v10 is a safety setting until a season backtest estimates how much weight the
+model has earned.
+
+Verified on a recalculated copy: every SOCCER value across 13 priced markets and
+the decision block match an independent calculation, the required price is exactly
+the gate's break-even, KELLY agrees with SOCCER on the same bet, and with the
+weight at 100% and no ceiling v10 reproduces v9 on all 100 cells. Power Query,
+DATA, FIXTURES and AFL are byte-identical to v9.
+
 ### Keeping Cliff's own settings
 
 Every build carries v7's defaults: max 1 unit per bet and no Kelly fraction. With a
