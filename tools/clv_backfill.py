@@ -150,6 +150,32 @@ def devig(odds):
     return [p / total for p in probs], total - 1.0
 
 
+def devig_power(odds):
+    """Power de-vig: fair p_i = (1/odds_i) ** k, with k chosen so they sum to 1.
+
+    Proportional de-vig takes the same share of margin off every outcome, but
+    bookmakers load more of their margin onto long shots (the favourite-longshot
+    bias). Proportional therefore leaves an outsider's fair price too SHORT, so
+    a bet on the outsider looks better against it than it really was. The power
+    method takes more off the long shot, which is closer to how closing prices
+    actually behave; it is the stricter of the two benchmarks."""
+    probs = [1.0 / o for o in odds]
+    total = sum(probs)
+    if total <= 0:
+        return None, None
+    lo, hi = 0.2, 5.0
+    for _ in range(80):
+        k = (lo + hi) / 2
+        if sum(p ** k for p in probs) > 1:
+            lo = k
+        else:
+            hi = k
+    return [p ** k for p in probs], total - 1.0
+
+
+DEVIG = {"proportional": devig, "power": devig_power}
+
+
 # ---------------------------------------------------------------- bet parsing
 OU_RE = re.compile(r"\s+(Over|Under)\s+([\d.]+)\s+Goals$", re.I)
 YESNO_RE = re.compile(r"\s+(Yes|No)$", re.I)
@@ -373,8 +399,9 @@ def best_fixture(idx, day, home, away, tol=1):
     return best[1], best[0], best[0] - runner[0]
 
 
-def fair_price(fx, market, selection, home, away):
+def fair_price(fx, market, selection, home, away, method="proportional"):
     """Return (fair_closing_odds, raw_closing_odds, overround, note)."""
+    devig = DEVIG[method]
     m = (market or "").lower()
     sel = (selection or "").strip()
 
@@ -448,9 +475,75 @@ def clv_of(side, odds_taken, stake, fair):
 # ---------------------------------------------------------------------- main
 OUT_FIELDS = ["settled", "home", "away", "market", "selection", "side",
               "odds_taken", "stake", "at_risk", "profit", "fixture", "fd_home",
-              "fd_away", "close_raw", "close_fair", "overround", "clv_pct",
-              "clv_dollar", "beat_close", "match_score", "status", "note"]
+              "fd_away", "league", "close_raw", "close_fair", "overround", "clv_pct",
+              "clv_dollar", "beat_close", "close_fair_power", "clv_pct_power",
+              "clv_dollar_power", "beat_close_power", "commission_est",
+              "match_score", "status", "note"]
 MIN_SCORE, MIN_MARGIN = 0.80, 0.05
+
+LEAGUE_NAMES = {
+    "E0": "England Premier League", "E1": "England Championship",
+    "E2": "England League One", "E3": "England League Two",
+    "EC": "England National League", "SC0": "Scotland Premiership",
+    "SC1": "Scotland Championship", "SC2": "Scotland League One",
+    "SC3": "Scotland League Two", "D1": "Germany Bundesliga",
+    "D2": "Germany 2. Bundesliga", "I1": "Italy Serie A", "I2": "Italy Serie B",
+    "SP1": "Spain La Liga", "SP2": "Spain Segunda", "F1": "France Ligue 1",
+    "F2": "France Ligue 2", "N1": "Netherlands Eredivisie",
+    "B1": "Belgium Pro League", "P1": "Portugal Primeira", "T1": "Turkey Super Lig",
+    "G1": "Greece Super League", "ARG": "Argentina", "AUT": "Austria",
+    "BRA": "Brazil", "CHN": "China", "DNK": "Denmark", "FIN": "Finland",
+    "IRL": "Ireland", "JPN": "Japan", "MEX": "Mexico", "NOR": "Norway",
+    "POL": "Poland", "ROU": "Romania", "RUS": "Russia", "SWE": "Sweden",
+    "SWZ": "Switzerland", "USA": "USA MLS",
+}
+
+
+def league_of(src):
+    code = re.sub(r"^(new_|\d{4}_)", "", src or "").replace(".csv", "")
+    return LEAGUE_NAMES.get(code, code)
+
+
+def market_group(market):
+    m = (market or "").lower()
+    if "match odds" in m:
+        return "Match Odds"
+    if "double chance" in m:
+        return "Double Chance"
+    if "over/under" in m:
+        return "Over/Under 2.5"
+    if "handicap" in m:
+        return "Asian Handicap"
+    return market or "?"
+
+
+def price_band(odds):
+    for top, label in ((1.5, "under 1.50"), (2.0, "1.50-1.99"), (3.0, "2.00-2.99"),
+                       (5.0, "3.00-4.99")):
+        if odds < top:
+            return label
+    return "5.00 and up"
+
+
+def print_breakdown(title, ok, key, order=None):
+    groups = {}
+    for r in ok:
+        groups.setdefault(key(r), []).append(r)
+    names = order if order else sorted(groups, key=lambda g: -len(groups[g]))
+    print(f"\n   {title:<24} bets  turnover  CLV(prop) CLV(power)  beat   after comm.   P/L")
+    for g in names:
+        rs = groups.get(g)
+        if not rs:
+            continue
+        risk = sum(r["at_risk"] for r in rs)
+        prop = sum(r["clv_dollar"] for r in rs)
+        powr = sum(r["clv_dollar_power"] for r in rs)
+        comm = sum(r["commission_est"] for r in rs)
+        beat = sum(1 for r in rs if r["beat_close_power"] == "YES")
+        pnl = sum(r["profit"] for r in rs)
+        print(f"   {str(g)[:24]:<24} {len(rs):>4} {risk:>9,.0f}  {prop/risk:>+7.1%}  "
+              f"{powr/risk:>+8.1%}  {beat/len(rs):>5.0%}  {(powr-comm)/risk:>+9.1%}  "
+              f"{pnl:>8,.0f}")
 
 
 def main():
@@ -462,6 +555,8 @@ def main():
     ap.add_argument("--no-download", action="store_true",
                     help="use only files already in --data-dir")
     ap.add_argument("--out", default="clv_backfill.csv")
+    ap.add_argument("--commission", type=float, default=0.06,
+                    help="your Betfair commission rate (default 0.06 = 6%%)")
     args = ap.parse_args()
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -532,6 +627,19 @@ def main():
             bump(f"NO CLOSING PRICE: {note}"); rows.append(base); continue
 
         dollars, pct, at_risk = clv_of(b["side"], b["odds"], b["stake"], fair)
+        fair_pw = fair_price(fx, b["market"], sel, home, away, "power")[0] or fair
+        dollars_pw, pct_pw, _ = clv_of(b["side"], b["odds"], b["stake"], fair_pw)
+        # commission is paid on winnings, so its expected cost is the chance the
+        # bet wins (at the stricter fair price) times the winnings it would pay
+        if b["side"].upper() == "BACK":
+            comm = args.commission * (1 / fair_pw) * b["stake"] * (b["odds"] - 1)
+        else:
+            comm = args.commission * (1 - 1 / fair_pw) * b["stake"]
+        base.update(league=league_of(fx["src"]), close_fair_power=round(fair_pw, 4),
+                    clv_dollar_power=round(dollars_pw, 4),
+                    clv_pct_power=(round(pct_pw, 6) if pct_pw is not None else ""),
+                    beat_close_power="YES" if dollars_pw > 0 else "NO",
+                    commission_est=round(comm, 4))
         base.update(status="OK", close_fair=round(fair, 4),
                     close_raw=(raw or ""), overround=(round(over, 4) if over else ""),
                     clv_dollar=round(dollars, 4),
@@ -561,6 +669,26 @@ def main():
         print(f"   beat the close         {beat}/{len(ok)} = {beat/len(ok):.1%}")
         print(f"   actual P/L on them     ${pnl:,.2f}  (gross of commission)")
         print(f"   luck (actual - CLV)    ${pnl-clv:,.2f}")
+
+        clv_pw = sum(r["clv_dollar_power"] for r in ok)
+        beat_pw = sum(1 for r in ok if r["beat_close_power"] == "YES")
+        comm = sum(r["commission_est"] for r in ok)
+        print("\n   Stricter benchmark (power de-vig, takes more margin off long shots):")
+        print(f"   CLV                    ${clv_pw:,.2f}  ({clv_pw/risk:+.2%})")
+        print(f"   beat the close         {beat_pw}/{len(ok)} = {beat_pw/len(ok):.1%}")
+        print(f"   expected commission    ${comm:,.2f}  ({comm/risk:.2%} of turnover, "
+              f"at {args.commission:.0%})")
+        print(f"   CLV after commission   ${clv_pw-comm:,.2f}  ({(clv_pw-comm)/risk:+.2%})"
+              "   <- the number that has to be positive")
+
+        print("\n   Breakdown (beat, after comm. and P/L use the stricter benchmark):")
+        print_breakdown("MARKET", ok, lambda r: market_group(r["market"]))
+        print_breakdown("PRICE TAKEN", ok, lambda r: price_band(r["odds_taken"]),
+                        ["under 1.50", "1.50-1.99", "2.00-2.99", "3.00-4.99", "5.00 and up"])
+        print_breakdown("BACK OR LAY", ok, lambda r: r["side"].title())
+        print_breakdown("LEAGUE", ok, lambda r: r["league"])
+        print("\n   A group needs roughly 100+ bets before its CLV means much;")
+        print("   below that, read the column as a hint, not a verdict.")
     print(f"\n   written: {args.out}")
     print("=" * 66)
 

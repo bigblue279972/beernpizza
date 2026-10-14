@@ -362,7 +362,14 @@ Four things it is careful about:
   eligible; a file without them is reported, not quietly mis-benchmarked.
 - **The bookmaker margin is stripped** before comparing. A book price carries
   overround and a Betfair price does not, so a raw comparison would show
-  phantom CLV on every bet.
+  phantom CLV on every bet. It is stripped two ways: proportionally, and by
+  the stricter power method, which takes more of the margin off long shots
+  (bookmakers load their margin there). Proportional alone flatters bets on
+  outsiders, so the verdict line uses the power figure.
+- **Commission is counted.** Its expected cost (the chance each bet wins times
+  the commission on what it would pay; `--commission`, default 6%) comes off
+  the stricter CLV to give the one number that has to be positive. The
+  results are then broken down by market, price taken, back/lay and league.
 - **Team matching refuses a shared non-distinctive word.** A plain string ratio
   scores `Man City` against `Man Utd` at 0.81 — high enough to price a bet off
   the wrong fixture. Tokens are paired individually and the worst pairing gets
