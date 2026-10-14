@@ -238,30 +238,61 @@ def candidate_urls(dates):
     return urls
 
 
+FRESH_HOURS = 12      # older than this and the file is fetched again: results change daily
+PAUSE, RETRY_WAITS = 0.5, (2, 5, 10)
+
+
 def download(urls, out_dir, verbose=True):
+    """Fetch each league file politely: a pause between requests, retries with
+    growing waits, and a re-download of anything older than FRESH_HOURS.
+
+    Fired back to back, football-data refused a scattered third of the requests
+    (the Premier League failed while the Championship came through), and a file
+    kept from an earlier run would silently miss every result since -- so a bet
+    placed after it was saved could never find its fixture.
+    """
+    import time
     os.makedirs(out_dir, exist_ok=True)
     got, missing = [], []
     for url, name in urls:
         dest = os.path.join(out_dir, name)
-        if os.path.exists(dest) and os.path.getsize(dest) > 200:
+        if (os.path.exists(dest) and os.path.getsize(dest) > 200 and
+                time.time() - os.path.getmtime(dest) < FRESH_HOURS * 3600):
             got.append(dest)
             continue
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = resp.read()
+        reason = None
+        for attempt, wait in enumerate((0,) + RETRY_WAITS):
+            if wait:
+                time.sleep(wait)
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    data = resp.read()
+            except urllib.error.HTTPError as e:
+                reason = f"HTTP {e.code}"
+                if e.code == 404:
+                    break                       # genuinely not published; no point retrying
+                continue
+            except Exception as e:                                  # noqa: BLE001
+                reason = type(e).__name__
+                continue
             if len(data) < 200:
-                missing.append((name, "empty"))
+                reason = "empty"
                 continue
             with open(dest, "wb") as fh:
                 fh.write(data)
             got.append(dest)
+            reason = None
             if verbose:
-                print(f"   downloaded {name} ({len(data)//1024} KB)")
-        except urllib.error.HTTPError as e:
-            missing.append((name, f"HTTP {e.code}"))
-        except Exception as e:                                  # noqa: BLE001
-            missing.append((name, type(e).__name__))
+                tries = f" (try {attempt + 1})" if attempt else ""
+                print(f"   downloaded {name} ({len(data)//1024} KB){tries}")
+            break
+        if reason:
+            if os.path.exists(dest) and os.path.getsize(dest) > 200:
+                got.append(dest)                # keep the older copy rather than nothing
+                reason += ", using the copy from an earlier run"
+            missing.append((name, reason))
+        time.sleep(PAUSE)
     return got, missing
 
 
@@ -448,6 +479,8 @@ def main():
         print(f"\nFetching league files into {args.data_dir}/ ...")
         paths, missing = download(candidate_urls(dates), args.data_dir)
     print(f"   {len(paths)} league files available, {len(missing)} unavailable")
+    for name, why in missing:
+        print(f"      {name}: {why}")
 
     fixtures, files_report = load_fixtures(paths)
     with_close = sum(1 for f in fixtures if f["h"])
