@@ -349,7 +349,11 @@ than live market prices.
 which publishes free per-league season CSVs carrying **closing** odds (their
 convention is an extra `C`: `B365CH` is Bet365's closing home price, `PSCH/PSCD/
 PSCA` are Pinnacle's closing 1X2). Pinnacle's close is the sharpest public
-benchmark in soccer, so it is preferred, falling back to the market average.
+benchmark in soccer, so it is preferred, then the Betfair Exchange close
+(`BFECH`, the market the bets were struck in, with almost no margin), then the
+bookmaker average. The choice is made game by game: recent files carry
+Pinnacle's columns but often leave them blank, and a whole-file choice threw
+those games away as having no closing price.
 No App Key, no 90-day limit.
 
 ```bash

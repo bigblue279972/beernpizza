@@ -7,7 +7,10 @@ odds; their convention is an extra "C" in the column code, so B365CH is Bet365's
 closing home price and PSCH/PSCD/PSCA are Pinnacle's closing 1X2.
 
 Pinnacle's closing line is the sharpest public benchmark in soccer, so it is
-preferred wherever present, falling back to the market average.
+preferred wherever its prices are actually filled in, then the Betfair Exchange
+close (the market these bets were struck in), then the bookmaker average. The
+choice is made game by game, because a file can carry Pinnacle's columns and
+leave them blank.
 
 Scope: CLUB football in the leagues football-data covers. It cannot reach
 international fixtures or AFL - those need other sources.
@@ -46,21 +49,25 @@ MAIN_DIVS = ["E0", "E1", "E2", "E3", "EC", "SC0", "SC1", "SC2", "SC3", "D1", "D2
 EXTRA = ["ARG", "AUT", "BRA", "CHN", "DNK", "FIN", "IRL", "JPN", "MEX", "NOR",
          "POL", "ROU", "RUS", "SWE", "SWZ", "USA"]
 
-# Closing-odds column candidates, best benchmark first. Pinnacle > market
-# average > max > single bookmaker. NOTHING here may be an opening-odds column.
+# Closing-odds column candidates, best benchmark first, as aligned sets (the
+# Nth home, draw and away column belong together). Pinnacle, then the Betfair
+# Exchange close -- the market these bets were struck in, with almost no margin
+# to strip -- then the bookmaker average, single books, and the best price
+# across books last (it mixes books, so it is not one market). NOTHING here may
+# be an opening-odds column.
 COL_1X2 = {
-    "H": ["PSCH", "PCH", "AvgCH", "MaxCH", "B365CH", "BFECH", "WHCH", "VCCH"],
-    "D": ["PSCD", "PCD", "AvgCD", "MaxCD", "B365CD", "BFECD", "WHCD", "VCCD"],
-    "A": ["PSCA", "PCA", "AvgCA", "MaxCA", "B365CA", "BFECA", "WHCA", "VCCA"],
+    "H": ["PSCH", "PCH", "BFECH", "AvgCH", "B365CH", "WHCH", "VCCH", "MaxCH"],
+    "D": ["PSCD", "PCD", "BFECD", "AvgCD", "B365CD", "WHCD", "VCCD", "MaxCD"],
+    "A": ["PSCA", "PCA", "BFECA", "AvgCA", "B365CA", "WHCA", "VCCA", "MaxCA"],
 }
 COL_OU25 = {
-    "O": ["PC>2.5", "AvgC>2.5", "MaxC>2.5", "B365C>2.5", "BFEC>2.5"],
-    "U": ["PC<2.5", "AvgC<2.5", "MaxC<2.5", "B365C<2.5", "BFEC<2.5"],
+    "O": ["PC>2.5", "BFEC>2.5", "AvgC>2.5", "B365C>2.5", "MaxC>2.5"],
+    "U": ["PC<2.5", "BFEC<2.5", "AvgC<2.5", "B365C<2.5", "MaxC<2.5"],
 }
 COL_AH = {
     "line": ["AHCh", "PAHh", "AHh"],
-    "H": ["PCAHH", "AvgCAHH", "MaxCAHH", "B365CAHH", "BFECAHH"],
-    "A": ["PCAHA", "AvgCAHA", "MaxCAHA", "B365CAHA", "BFECAHA"],
+    "H": ["PCAHH", "BFECAHH", "AvgCAHH", "B365CAHH", "MaxCAHH"],
+    "A": ["PCAHA", "BFECAHA", "AvgCAHA", "B365CAHA", "MaxCAHA"],
 }
 HOME_COLS = ["HomeTeam", "Home", "HT"]
 AWAY_COLS = ["AwayTeam", "Away", "AT"]
@@ -345,34 +352,44 @@ def load_fixtures(paths):
         if not rows:
             continue
         header = set(rows[0].keys())
+
+        def sets(group):
+            keys = [k for k in group if k != "line"]
+            return [tuple(group[k][i] for k in keys) for i in range(len(group[keys[0]]))
+                    if all(group[k][i] in header for k in keys)]
+
         cols = {
             "date": pick(header, DATE_COLS), "home": pick(header, HOME_COLS),
-            "away": pick(header, AWAY_COLS),
-            "h": pick(header, COL_1X2["H"]), "d": pick(header, COL_1X2["D"]),
-            "a": pick(header, COL_1X2["A"]),
-            "o25": pick(header, COL_OU25["O"]), "u25": pick(header, COL_OU25["U"]),
-            "ahl": pick(header, COL_AH["line"]), "ahh": pick(header, COL_AH["H"]),
-            "aha": pick(header, COL_AH["A"]),
+            "away": pick(header, AWAY_COLS), "ahl": pick(header, COL_AH["line"]),
+            "1x2": sets(COL_1X2), "ou": sets(COL_OU25), "ah": sets(COL_AH),
         }
         files_report.append((os.path.basename(p), len(rows), cols))
         if not (cols["date"] and cols["home"] and cols["away"]):
             continue
+
+        def first_full(r, candidates):
+            """A file can carry Pinnacle's columns yet leave them blank for
+            recent games, so the benchmark is chosen game by game: the best set
+            whose prices are all actually there."""
+            for cset in candidates:
+                vals = [fnum(r.get(c)) for c in cset]
+                if all(vals):
+                    return vals, cset[0]
+            return [None] * (len(candidates[0]) if candidates else 0), None
+
         for r in rows:
             d = parse_date(r.get(cols["date"], ""))
             if not d or not r.get(cols["home"]):
                 continue
+            (h, dr, a), b1 = first_full(r, cols["1x2"]) if cols["1x2"] else ((None,) * 3, None)
+            (o25, u25), _b2 = first_full(r, cols["ou"]) if cols["ou"] else ((None,) * 2, None)
+            (ahh, aha), _b3 = first_full(r, cols["ah"]) if cols["ah"] else ((None,) * 2, None)
             fixtures.append({
                 "date": d, "home": r[cols["home"]], "away": r[cols["away"]],
-                "src": os.path.basename(p),
-                "h": fnum(r.get(cols["h"])) if cols["h"] else None,
-                "d": fnum(r.get(cols["d"])) if cols["d"] else None,
-                "a": fnum(r.get(cols["a"])) if cols["a"] else None,
-                "o25": fnum(r.get(cols["o25"])) if cols["o25"] else None,
-                "u25": fnum(r.get(cols["u25"])) if cols["u25"] else None,
+                "src": os.path.basename(p), "h": h, "d": dr, "a": a, "bench": b1,
+                "o25": o25, "u25": u25,
                 "ahl": r.get(cols["ahl"]) if cols["ahl"] else None,
-                "ahh": fnum(r.get(cols["ahh"])) if cols["ahh"] else None,
-                "aha": fnum(r.get(cols["aha"])) if cols["aha"] else None,
-                "cols": cols,
+                "ahh": ahh, "aha": aha, "cols": cols,
             })
     return fixtures, files_report
 
@@ -475,11 +492,15 @@ def clv_of(side, odds_taken, stake, fair):
 # ---------------------------------------------------------------------- main
 OUT_FIELDS = ["settled", "home", "away", "market", "selection", "side",
               "odds_taken", "stake", "at_risk", "profit", "fixture", "fd_home",
-              "fd_away", "league", "close_raw", "close_fair", "overround", "clv_pct",
+              "fd_away", "league", "benchmark", "close_raw", "close_fair", "overround", "clv_pct",
               "clv_dollar", "beat_close", "close_fair_power", "clv_pct_power",
               "clv_dollar_power", "beat_close_power", "commission_est",
               "match_score", "status", "note"]
 MIN_SCORE, MIN_MARGIN = 0.80, 0.05
+
+BENCH_NAMES = {"PSCH": "Pinnacle", "PCH": "Pinnacle", "BFECH": "Betfair",
+               "AvgCH": "bookmaker average", "B365CH": "Bet365", "WHCH": "William Hill",
+               "VCCH": "BetVictor", "MaxCH": "best price"}
 
 LEAGUE_NAMES = {
     "E0": "England Premier League", "E1": "England Championship",
@@ -580,8 +601,13 @@ def main():
     fixtures, files_report = load_fixtures(paths)
     with_close = sum(1 for f in fixtures if f["h"])
     print(f"   {len(fixtures)} fixtures parsed, {with_close} with closing 1X2")
-    used = {c["h"] for _n, _r, c in files_report if c.get("h")}
-    print(f"   closing 1X2 column used: {', '.join(sorted(x for x in used if x)) or 'NONE FOUND'}")
+    used = {}
+    for f in fixtures:
+        if f["bench"]:
+            used[f["bench"]] = used.get(f["bench"], 0) + 1
+    print("   closing 1X2 benchmark by game: " +
+          (", ".join(f"{BENCH_NAMES.get(k, k)} {v}" for k, v in
+                     sorted(used.items(), key=lambda x: -x[1])) or "NONE FOUND"))
     if not with_close:
         print("\n   WARNING: no closing-odds columns found in any file.")
         print("   Opening odds are deliberately NOT substituted - they would give")
@@ -601,7 +627,7 @@ def main():
                 "profit": b["pl"], "home": "", "away": "", "selection": "",
                 "fixture": "", "fd_home": "", "fd_away": "", "close_raw": "",
                 "close_fair": "", "overround": "", "clv_pct": "", "clv_dollar": "",
-                "beat_close": "", "match_score": "", "note": ""}
+                "beat_close": "", "match_score": "", "note": "", "benchmark": ""}
         if not parts:
             base["status"] = "UNPARSEABLE"
             bump("UNPARSEABLE"); rows.append(base); continue
@@ -635,6 +661,8 @@ def main():
             comm = args.commission * (1 / fair_pw) * b["stake"] * (b["odds"] - 1)
         else:
             comm = args.commission * (1 - 1 / fair_pw) * b["stake"]
+        if market_group(b["market"]) in ("Match Odds", "Double Chance"):
+            base["benchmark"] = BENCH_NAMES.get(fx["bench"], fx["bench"])
         base.update(league=league_of(fx["src"]), close_fair_power=round(fair_pw, 4),
                     clv_dollar_power=round(dollars_pw, 4),
                     clv_pct_power=(round(pct_pw, 6) if pct_pw is not None else ""),
@@ -686,6 +714,8 @@ def main():
         print_breakdown("PRICE TAKEN", ok, lambda r: price_band(r["odds_taken"]),
                         ["under 1.50", "1.50-1.99", "2.00-2.99", "3.00-4.99", "5.00 and up"])
         print_breakdown("BACK OR LAY", ok, lambda r: r["side"].title())
+        print_breakdown("BENCHMARK (1X2 only)", [r for r in ok if r["benchmark"]],
+                        lambda r: r["benchmark"])
         print_breakdown("LEAGUE", ok, lambda r: r["league"])
         print("\n   A group needs roughly 100+ bets before its CLV means much;")
         print("   below that, read the column as a hint, not a verdict.")
