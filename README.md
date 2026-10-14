@@ -415,6 +415,50 @@ back to April 2015, no 90-day limit) or an AFL-specific odds source.
 **Step 3** - capture the price at the off for new bets, so the log fills its own
 Closing Odds column.
 
+## Backtesting the soccer model
+
+`tools/backtest_model.py` asks of thousands of past games the question six weeks
+of real bets answered for about 300: does the workbook's model pick bets the
+market later agrees with?
+
+```bash
+python tools/backtest_model.py                    # downloads what it needs
+python tools/backtest_model.py --weight 0.3 --max-price 4 --buffer 0.10
+```
+
+football-data.co.uk carries, for every game in the workbook's 15 main leagues,
+Betfair's **early** price (collected a few days before kick-off, roughly when
+the slate is priced) and Betfair's **closing** price. For each game from
+`--start` (default 1 August 2025) the script:
+
+1. rates every team exactly as the workbook's Power Query does (180-day
+   half-life, 900 days back, current and previous season files, shrink 4, a
+   league needs 20 weighted games, unrated teams skipped), using only results
+   from before the game;
+2. prices it as the SOCCER tab does (Poisson to 12 goals);
+3. applies the bet rule at the early price -- model weight, buffer, commission,
+   price ceiling, one bet per family, best Kelly wins -- for v9, v10 and a few
+   other settings;
+4. scores each bet by CLV against the de-vigged closing price, after expected
+   commission, alongside the **random baseline**: the CLV of backing every
+   selection in the same group. Early prices in thin leagues carry a 2-5%
+   spread, so the bar a rule has to clear is not zero.
+
+It also finds the model weight that best predicts results when blended with
+the early and the closing price (the number SETTINGS "Model weight" should
+hold), and repeats the test with ratings built on Understat xG, and on half
+goals and half xG, for the five leagues Understat covers.
+
+Checked against the workbook: rebuilding the ratings on the date of the saved
+slate in FIXTURE DBASE v10 gives all 60 fixtures' expected goals within 0.006 of
+the workbook's own, 12 of them exactly; the rest differ only by results the
+site has added since.
+
+Double chance has no Betfair column, so it is priced as backing both outcomes
+in Match Odds (a dutch). Only the 2.5 goals line has prices; BTTS has none. The
+six worldwide leagues carry closing prices only, so they enter the model-weight
+test but not the bet simulation.
+
 ## Analysing a Betfair export
 
 `tools/betfair_analyse.py` reads a Betfair *ExchangeBets Settled* CSV and reports
